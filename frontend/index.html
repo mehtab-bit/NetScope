@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="AI-powered full-stack network packet analyzer with real-time ML traffic classification and interactive generative AI explanations.">
+    <title>AI NetScope — Intelligent Network Analyzer</title>
+    <!-- Outfit Font & Icons -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- FontAwesome for Premium Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Custom Style -->
+    <link rel="stylesheet" href="/static/style.css">
+    <!-- Frontend Logic -->
+    <script src="/static/app.js" defer></script>
+</head>
+<body>
+    <!-- BACKGROUND GLOW ORBS -->
+    <div class="bg-glow-orb-1"></div>
+    <div class="bg-glow-orb-2"></div>
+
+    <div class="app-container">
+        
+        <!-- SIDEBAR -->
+        <aside class="sidebar" id="sidebar">
+            <button class="close-sidebar-btn" id="closeSidebarBtn" aria-label="Close menu"><i class="fa-solid fa-xmark"></i></button>
+            <div class="logo-area">
+                <i class="fa-solid fa-microchip logo-icon"></i>
+                <div class="logo-text">
+                    <h1>NetScope<span>.ai</span></h1>
+                    <p>Vibe Coding AI Edition</p>
+                </div>
+            </div>
+            
+            <div class="sidebar-section">
+                <h2><i class="fa-solid fa-key"></i> Gemini AI Configuration</h2>
+                <div class="api-key-box">
+                    <p class="section-desc">Pasting your Gemini API Key enables the interactive network chat assistant.</p>
+                    <div class="input-with-button">
+                        <input type="password" id="apiKeyInput" placeholder="Enter GEMINI_API_KEY..." />
+                        <button id="saveKeyBtn" title="Save Key"><i class="fa-solid fa-check"></i></button>
+                    </div>
+                    <span id="keyStatus" class="key-status status-unconfigured">
+                        <i class="fa-solid fa-circle-notch fa-spin"></i> Checking env variable...
+                    </span>
+                </div>
+            </div>
+            
+            <div class="sidebar-section">
+                <h2><i class="fa-solid fa-play"></i> One-Click Demos</h2>
+                <p class="section-desc">New to networking? Click a pre-loaded simulation to analyze traffic instantly!</p>
+                <div class="demo-list" id="demoList">
+                    <!-- Loaded dynamically -->
+                    <div class="demo-card skeleton"></div>
+                    <div class="demo-card skeleton"></div>
+                </div>
+            </div>
+            
+            <div class="sidebar-footer">
+                <p>Deploy Ready for <i class="fa-brands fa-aws"></i> AWS App Runner</p>
+            </div>
+        </aside>
+
+        <!-- MAIN WORKSPACE -->
+        <main class="main-content">
+            <!-- TOP HEADER -->
+            <header class="top-header">
+                <div class="header-left">
+                    <button class="hamburger-btn" id="hamburgerBtn" aria-label="Open menu"><i class="fa-solid fa-bars"></i></button>
+                    <div class="header-welcome">
+                        <h2>Network Diagnostics Hub</h2>
+                        <p>Inspect, classify, and secure packet data using Local Machine Learning & Generative AI.</p>
+                    </div>
+                </div>
+                <div class="header-actions">
+                    <button id="newAnalysisBtn" class="btn-secondary btn-small" style="display: none; margin-right: 12px;"><i class="fa-solid fa-cloud-arrow-up"></i> New Analysis</button>
+                    <div class="active-file-indicator" id="activeFileIndicator">
+                        <span class="pulse"></span> Ready to analyze
+                    </div>
+                </div>
+            </header>
+
+            <!-- UPLOAD AREA -->
+            <section class="upload-section" id="uploadArea">
+                <div class="upload-card">
+                    <i class="fa-solid fa-cloud-arrow-up upload-icon"></i>
+                    <h3>Drag & Drop PCAP Capture</h3>
+                    <p>Upload any standard <code>.pcap</code> file from Wireshark, tcpdump, or your router.</p>
+                    <label for="pcapFile" class="btn-primary">Browse File</label>
+                    <input type="file" id="pcapFile" accept=".pcap" style="display: none;" />
+                    <p class="upload-note">Max file size 20MB. Captured IP headers are parsed fully on-server.</p>
+                </div>
+            </section>
+
+            <!-- LOADING INDICATOR -->
+            <div class="loading-overlay" id="loadingOverlay" style="display: none;">
+                <div class="loader-box">
+                    <i class="fa-solid fa-network-wired loader-icon fa-spin"></i>
+                    <h3>Deep Packet Inspection in Progress</h3>
+                    <p id="loaderMessage">Reconstructing network flows, extracting TLS SNI headers, and applying local ML models...</p>
+                </div>
+            </div>
+
+            <!-- DASHBOARD VIEW (HIDDEN BY DEFAULT) -->
+            <div class="dashboard-grid" id="dashboardView" style="display: none;">
+                
+                <!-- ROW 1: METRICS -->
+                <div class="metrics-row">
+                    <div class="metric-card">
+                        <div class="metric-icon bg-blue"><i class="fa-solid fa-network-wired"></i></div>
+                        <div class="metric-details">
+                            <span class="metric-value" id="metricPackets">0</span>
+                            <span class="metric-label">Packets Read</span>
+                        </div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-icon bg-purple"><i class="fa-solid fa-arrows-spin"></i></div>
+                        <div class="metric-details">
+                            <span class="metric-value" id="metricFlows">0</span>
+                            <span class="metric-label">Assembled Flows</span>
+                        </div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-icon bg-green"><i class="fa-solid fa-chart-line"></i></div>
+                        <div class="metric-details">
+                            <span class="metric-value" id="metricVolume">0 KB</span>
+                            <span class="metric-label">Total Data Size</span>
+                        </div>
+                    </div>
+                    <div class="metric-card" id="threatCard">
+                        <div class="metric-icon bg-gray" id="threatIcon"><i class="fa-solid fa-shield-halved"></i></div>
+                        <div class="metric-details">
+                            <span class="metric-value" id="metricThreats">0</span>
+                            <span class="metric-label" id="threatLabel">Threats Identified</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ROW 2: GENERAL EXPLAINER + CHARTS -->
+                <div class="middle-layout">
+                    <!-- AI INSIGHT CARD (Beginner Guide) -->
+                    <div class="glass-card ai-insight-card">
+                        <div class="card-header">
+                            <h3><i class="fa-solid fa-wand-magic-sparkles"></i> AI Network Analysis</h3>
+                            <button class="btn-secondary btn-small" id="regenerateInsightBtn">
+                                <i class="fa-solid fa-rotate-right"></i> Refresh
+                            </button>
+                        </div>
+                        <div class="insight-content markdown-body" id="insightContent">
+                            <p>Loading AI-generated plain English report... network traffic is being parsed.</p>
+                        </div>
+                    </div>
+
+                    <!-- VISUAL CHARTS -->
+                    <div class="glass-card visual-card">
+                        <h3><i class="fa-solid fa-chart-pie"></i> Visual Traffic Split</h3>
+                        <div class="chart-container">
+                            <div class="chart-box">
+                                <h4>Protocol Distribution</h4>
+                                <div class="protocol-bar-chart" id="protocolChart">
+                                    <!-- Rendered Dynamically -->
+                                </div>
+                            </div>
+                            <div class="chart-box">
+                                <h4>Application Categories</h4>
+                                <div class="app-bar-chart" id="appChart">
+                                    <!-- Rendered Dynamically -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ROW 3: DETAILED FLOW TABLE -->
+                <div class="glass-card table-card">
+                    <div class="card-header-table">
+                        <h3><i class="fa-solid fa-list"></i> Reconstructed Flow Conversations</h3>
+                        <div class="table-actions">
+                            <button id="exportCsvBtn" class="btn-secondary btn-small" title="Export to CSV"><i class="fa-solid fa-file-csv"></i> Export CSV</button>
+                            <div class="table-search">
+                                <i class="fa-solid fa-magnifying-glass"></i>
+                                <input type="text" id="flowSearch" placeholder="Search IP, Port, Category..." />
+                            </div>
+                        </div>
+                    </div>
+                    <div class="table-responsive">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Flow ID</th>
+                                    <th>Source IP</th>
+                                    <th>Destination IP</th>
+                                    <th>Protocol</th>
+                                    <th>Dest Port</th>
+                                    <th>Category (ML Tag)</th>
+                                    <th>Associated Domain / Host</th>
+                                    <th>Total Size</th>
+                                    <th>Packets</th>
+                                    <th>Security Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="flowTableBody">
+                                <!-- Loaded dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- FLOATING CHAT WIDGET -->
+        <div class="chat-widget" id="chatWidget" style="display: none;">
+            <div class="chat-header" id="chatHeader">
+                <div class="chat-title">
+                    <i class="fa-solid fa-comments"></i>
+                    <div>
+                        <h4>AI Packet Assistant</h4>
+                        <span>Streaming Online</span>
+                    </div>
+                </div>
+                <div class="chat-actions">
+                    <button id="minimizeChatBtn" title="Minimize"><i class="fa-solid fa-chevron-down"></i></button>
+                </div>
+            </div>
+            
+            <div class="chat-body" id="chatBody">
+                <div class="chat-message bot">
+                    <div class="message-bubble">
+                        Hello! I am your AI Packet Assistant. Ask me anything about this packet trace.
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Quick Suggestion Chips -->
+            <div class="chat-suggestions" id="chatSuggestions">
+                <button class="chip">What is DNS?</button>
+                <button class="chip">Is this scan normal?</button>
+                <button class="chip">Generate C++ rules</button>
+            </div>
+            
+            <div class="chat-input-area">
+                <input type="text" id="chatInput" placeholder="Ask about ports, protocols, or safety..." />
+                <button id="sendChatBtn"><i class="fa-solid fa-paper-plane"></i></button>
+            </div>
+        </div>
+
+        <!-- CHAT TRIGGER BUTTON (When Minimized) -->
+        <button class="chat-trigger" id="chatTrigger" style="display: none;">
+            <i class="fa-solid fa-comments"></i>
+            <span class="badge" id="chatBadge" style="display: none;">1</span>
+        </button>
+
+    </div>
+
+    <!-- TOAST NOTIFICATIONS CONTAINER -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- ONBOARDING MODAL -->
+    <div class="onboarding-overlay" id="onboardingModal" style="display: none;">
+        <div class="onboarding-card">
+            <div class="onboarding-header">
+                <i class="fa-solid fa-wand-magic-sparkles onboarding-wizard-icon"></i>
+                <h2>Welcome to NetScope.ai!</h2>
+                <p>Let's get you started with intelligent network packet analysis in 3 simple steps.</p>
+            </div>
+            <div class="onboarding-steps">
+                <div class="onboarding-step">
+                    <div class="step-num">1</div>
+                    <div class="step-detail">
+                        <h3>Upload or Pick a Demo</h3>
+                        <p>Drag and drop a <code>.pcap</code> file or click one of our beginner-friendly simulation cards on the sidebar to load ready-made traces.</p>
+                    </div>
+                </div>
+                <div class="onboarding-step">
+                    <div class="step-num">2</div>
+                    <div class="step-detail">
+                        <h3>Explore Visual & ML Splitting</h3>
+                        <p>See reconstructed network conversations, protocol split charts, and automated ML threat alerts flagging security risks.</p>
+                    </div>
+                </div>
+                <div class="onboarding-step">
+                    <div class="step-num">3</div>
+                    <div class="step-detail">
+                        <h3>Ask AI Questions</h3>
+                        <p>Use the <strong>AI Packet Assistant</strong> to ask questions in plain English, translate tech terms, or generate firewall blocking rules!</p>
+                    </div>
+                </div>
+            </div>
+            <button class="btn-primary onboarding-dismiss" id="onboardingDismissBtn">Start Analyzing!</button>
+        </div>
+    </div>
+</body>
+</html>
