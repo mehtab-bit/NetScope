@@ -2,8 +2,9 @@ document.addEventListener("DOMContentLoaded", () => {
     // State management
     let activeFlows = [];
     let chatHistory = [];
-    let savedApiKey = localStorage.getItem("gemini_api_key") || "";
     let searchTimeout = null;
+    let topologyAnimationId = null;
+    let activeFilter = "all";
     
     // UI Elements
     const sidebar = document.getElementById("sidebar");
@@ -14,8 +15,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const onboardingModal = document.getElementById("onboardingModal");
     const onboardingDismissBtn = document.getElementById("onboardingDismissBtn");
     
-    const apiKeyInput = document.getElementById("apiKeyInput");
-    const saveKeyBtn = document.getElementById("saveKeyBtn");
     const keyStatus = document.getElementById("keyStatus");
     const demoList = document.getElementById("demoList");
     const uploadArea = document.getElementById("uploadArea");
@@ -52,6 +51,19 @@ document.addEventListener("DOMContentLoaded", () => {
     const minimizeChatBtn = document.getElementById("minimizeChatBtn");
     const chatBadge = document.getElementById("chatBadge");
 
+    // Drawer Elements
+    const inspectorDrawer = document.getElementById("inspectorDrawer");
+    const closeDrawerBtn = document.getElementById("closeDrawerBtn");
+    const drawerFlowTitle = document.getElementById("drawerFlowTitle");
+    const drawerFlowSub = document.getElementById("drawerFlowSub");
+    const drawerPacketBody = document.getElementById("drawerPacketBody");
+    const hexViewer = document.getElementById("hexViewer");
+    const tabBtnPackets = document.getElementById("tabBtnPackets");
+    const tabBtnHex = document.getElementById("tabBtnHex");
+    const tabFlowPackets = document.getElementById("tabFlowPackets");
+    const tabFlowHex = document.getElementById("tabFlowHex");
+    const tableFilters = document.getElementById("tableFilters");
+
     // Onboarding Modal Trigger
     if (!localStorage.getItem("onboarding_done")) {
         onboardingModal.style.display = "flex";
@@ -81,32 +93,13 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
-    // Initialize API Key view
-    if (savedApiKey) {
-        apiKeyInput.value = savedApiKey;
-        updateKeyStatus(true);
-    } else {
-        updateKeyStatus(false);
-    }
+    // Initialize API Key status checking (HTTP-Only Cookie/Server Env)
+    checkKeyStatus();
     
     // Load Demo Options
     loadDemos();
 
     // Event Listeners
-    saveKeyBtn.addEventListener("click", () => {
-        const val = apiKeyInput.value.trim();
-        if (val) {
-            localStorage.setItem("gemini_api_key", val);
-            savedApiKey = val;
-            updateKeyStatus(true);
-            showToast("Gemini API Key configured locally!", "success");
-        } else {
-            localStorage.removeItem("gemini_api_key");
-            savedApiKey = "";
-            updateKeyStatus(false);
-            showToast("API Key cleared.", "success");
-        }
-    });
 
     // File Drag & Drop
     uploadArea.addEventListener("dragover", (e) => {
@@ -146,9 +139,17 @@ document.addEventListener("DOMContentLoaded", () => {
     flowSearch.addEventListener("input", (e) => {
         clearTimeout(searchTimeout);
         searchTimeout = setTimeout(() => {
-            filterFlowsTable(e.target.value);
+            applyActiveFilters();
         }, 150);
     });
+
+    // Close Drawer Bindings
+    closeDrawerBtn.addEventListener("click", () => {
+        inspectorDrawer.classList.remove("open");
+    });
+
+    tabBtnPackets.addEventListener("click", () => switchTab("flowPackets"));
+    tabBtnHex.addEventListener("click", () => switchTab("flowHex"));
 
     // AI Insight Regenerate
     regenerateInsightBtn.addEventListener("click", () => {
@@ -200,10 +201,20 @@ document.addEventListener("DOMContentLoaded", () => {
     function updateKeyStatus(configured) {
         if (configured) {
             keyStatus.className = "key-status status-configured";
-            keyStatus.innerHTML = '<i class="fa-solid fa-circle-check"></i> Connected';
+            keyStatus.innerHTML = '<i class="fa-solid fa-circle-check"></i> AI Agent Active';
         } else {
             keyStatus.className = "key-status status-unconfigured";
             keyStatus.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> Using Offline Mode';
+        }
+    }
+
+    async function checkKeyStatus() {
+        try {
+            const res = await fetch("/api/config/status");
+            const data = await res.json();
+            updateKeyStatus(data.configured);
+        } catch (e) {
+            updateKeyStatus(false);
         }
     }
 
@@ -329,6 +340,9 @@ document.addEventListener("DOMContentLoaded", () => {
         // Render charts
         renderCharts(data.flows);
 
+        // Initialize Topology Canvas Map
+        initTopology(data.flows);
+
         // Populate Table
         populateFlowsTable(data.flows);
 
@@ -415,11 +429,169 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
+    // Canvas topology particle configurations
+    let topologyNodes = [];
+    let topologyLinks = [];
+    let topologyParticles = [];
+
+    function initTopology(flows) {
+        if (topologyAnimationId) {
+            cancelAnimationFrame(topologyAnimationId);
+        }
+
+        const canvas = document.getElementById("topologyCanvas");
+        if (!canvas) return;
+        const ctx = canvas.getContext("2d");
+
+        // Fit canvas to parent node
+        const rect = canvas.parentNode.getBoundingClientRect();
+        canvas.width = rect.width || 550;
+        canvas.height = rect.height || 240;
+
+        const width = canvas.width;
+        const height = canvas.height;
+
+        topologyNodes = [];
+        topologyLinks = [];
+        topologyParticles = [];
+
+        // 1. Center node representing Local Host Client
+        const centerNode = {
+            id: "local_host",
+            label: "Local Client",
+            ip: "192.168.1.100",
+            x: width / 2,
+            y: height / 2,
+            size: 13,
+            color: "#4776e6",
+            isCenter: true
+        };
+        topologyNodes.push(centerNode);
+
+        // 2. Select top orbiting flows
+        const externalIPMap = {};
+        flows.forEach(flow => {
+            const extIP = flow.dst_ip === "192.168.1.100" ? flow.src_ip : flow.dst_ip;
+            if (extIP !== "192.168.1.100") {
+                externalIPMap[extIP] = flow;
+            }
+        });
+
+        const externalIPs = Object.values(externalIPMap).slice(0, 6);
+        
+        externalIPs.forEach((flow, index) => {
+            const angle = (index / externalIPs.length) * Math.PI * 2;
+            const radius = Math.min(width, height) * 0.36;
+            const x = width / 2 + Math.cos(angle) * radius;
+            const y = height / 2 + Math.sin(angle) * radius;
+
+            let color = "#8e54e9";
+            if (flow.anomalies && flow.anomalies.length > 0) {
+                color = "#ff5858";
+            } else if (flow.protocol === "DNS") {
+                color = "#f857a6";
+            }
+
+            const label = flow.app_category !== "UNKNOWN" ? flow.app_category : flow.domain || flow.dst_ip;
+
+            const node = {
+                id: `node_${index}`,
+                label: label,
+                ip: flow.dst_ip === "192.168.1.100" ? flow.src_ip : flow.dst_ip,
+                x: x,
+                y: y,
+                size: 7,
+                color: color,
+                isCenter: false
+            };
+            topologyNodes.push(node);
+
+            topologyLinks.push({
+                source: centerNode,
+                target: node,
+                color: "rgba(255, 255, 255, 0.08)"
+            });
+
+            // Particles flowing along links
+            const pCount = Math.min(Math.max(Math.floor(flow.packet_count / 10), 1), 5);
+            for (let i = 0; i < pCount; i++) {
+                topologyParticles.push({
+                    source: centerNode,
+                    target: node,
+                    progress: Math.random(),
+                    speed: 0.003 + Math.random() * 0.008,
+                    size: 2 + Math.random() * 2,
+                    color: color
+                });
+            }
+        });
+
+        animateTopology(canvas, ctx);
+    }
+
+    function animateTopology(canvas, ctx) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Draw Links
+        topologyLinks.forEach(link => {
+            ctx.beginPath();
+            ctx.moveTo(link.source.x, link.source.y);
+            ctx.lineTo(link.target.x, link.target.y);
+            ctx.strokeStyle = link.color;
+            ctx.lineWidth = 1;
+            ctx.stroke();
+        });
+
+        // Draw Particles
+        topologyParticles.forEach(p => {
+            p.progress += p.speed;
+            if (p.progress >= 1.0) p.progress = 0;
+
+            const x = p.source.x + (p.target.x - p.source.x) * p.progress;
+            const y = p.source.y + (p.target.y - p.source.y) * p.progress;
+
+            ctx.beginPath();
+            ctx.arc(x, y, p.size, 0, Math.PI * 2);
+            ctx.fillStyle = p.color;
+            ctx.shadowBlur = 4;
+            ctx.shadowColor = p.color;
+            ctx.fill();
+            ctx.shadowBlur = 0; // reset glow
+        });
+
+        // Draw Nodes
+        topologyNodes.forEach(node => {
+            if (node.isCenter) {
+                ctx.beginPath();
+                ctx.arc(node.x, node.y, node.size + Math.sin(Date.now() / 180) * 2.5, 0, Math.PI * 2);
+                ctx.fillStyle = "rgba(71, 118, 230, 0.12)";
+                ctx.fill();
+            }
+
+            ctx.beginPath();
+            ctx.arc(node.x, node.y, node.size, 0, Math.PI * 2);
+            ctx.fillStyle = node.color;
+            ctx.fill();
+            ctx.lineWidth = 1.5;
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.4)";
+            ctx.stroke();
+
+            // Label text
+            ctx.font = "9px Inter, sans-serif";
+            ctx.fillStyle = "#a0aec0";
+            ctx.textAlign = "center";
+            ctx.fillText(node.label, node.x, node.y + node.size + 11);
+        });
+
+        topologyAnimationId = requestAnimationFrame(() => animateTopology(canvas, ctx));
+    }
+
     function populateFlowsTable(flows) {
         flowTableBody.innerHTML = "";
         flows.forEach(flow => {
             const tr = document.createElement("tr");
             tr.setAttribute("data-search", `${flow.src_ip} ${flow.dst_ip} ${flow.protocol} ${flow.app_category} ${flow.domain}`);
+            tr.style.cursor = "pointer";
             
             // App category class mapping
             let catClass = "cat-unknown";
@@ -442,29 +614,159 @@ document.addEventListener("DOMContentLoaded", () => {
 
             const sizeStr = flow.byte_count > 1024 * 1024 ? `${(flow.byte_count / (1024*1024)).toFixed(2)} MB` : `${(flow.byte_count / 1024).toFixed(1)} KB`;
 
+            // ML prediction confidence badge
+            let confidenceBadge = "";
+            if (flow.ml_confidence < 1.0) {
+                confidenceBadge = `<span class="badge-confidence" title="Random Forest prediction probability">${Math.round(flow.ml_confidence * 100)}% ML</span>`;
+            }
+
             tr.innerHTML = `
                 <td><strong>#${flow.flow_id}</strong></td>
                 <td><code>${flow.src_ip}</code></td>
                 <td><code>${flow.dst_ip}</code></td>
                 <td><span class="badge-proto">${flow.protocol}</span></td>
                 <td><code>${flow.dst_port}</code></td>
-                <td><span class="badge-category ${catClass}">${flow.app_category}</span></td>
+                <td><span class="badge-category ${catClass}">${flow.app_category}${confidenceBadge}</span></td>
                 <td><span class="domain-text" title="${flow.domain}">${flow.domain || '-'}</span></td>
                 <td>${sizeStr}</td>
                 <td>${flow.packet_count}</td>
                 <td>${secHtml}</td>
             `;
+
+            // Click listener for details drawer
+            tr.addEventListener("click", () => {
+                openInspectorDrawer(flow);
+            });
+
             flowTableBody.appendChild(tr);
+        });
+
+        // Initialize / reset Filter Pills to All
+        const filterPills = tableFilters.querySelectorAll(".filter-pill");
+        filterPills.forEach(p => p.classList.remove("active"));
+        tableFilters.querySelector('[data-filter="all"]').classList.add("active");
+        activeFilter = "all";
+    }
+
+    // Category pills click handler binding
+    const filterPills = tableFilters.querySelectorAll(".filter-pill");
+    filterPills.forEach(pill => {
+        pill.addEventListener("click", () => {
+            filterPills.forEach(p => p.classList.remove("active"));
+            pill.classList.add("active");
+            activeFilter = pill.getAttribute("data-filter");
+            applyActiveFilters();
+        });
+    });
+
+    function applyActiveFilters() {
+        const query = flowSearch.value.trim().toLowerCase();
+        const rows = flowTableBody.querySelectorAll("tr");
+
+        rows.forEach(row => {
+            const searchTxt = row.getAttribute("data-search").toLowerCase();
+            const proto = row.querySelector(".badge-proto").textContent;
+            const category = row.querySelector(".badge-category").textContent.toLowerCase();
+            const securityCell = row.innerHTML.toLowerCase();
+
+            const matchesSearch = searchTxt.includes(query);
+            
+            let matchesFilter = true;
+            if (activeFilter === "TCP") {
+                matchesFilter = (proto === "TCP");
+            } else if (activeFilter === "UDP") {
+                matchesFilter = (proto === "UDP");
+            } else if (activeFilter === "DNS") {
+                matchesFilter = (category.includes("dns") || searchTxt.includes("dns"));
+            } else if (activeFilter === "threat") {
+                matchesFilter = (securityCell.includes("warning") || securityCell.includes("status-threat") || category.includes("threat"));
+            }
+
+            row.style.display = (matchesSearch && matchesFilter) ? "" : "none";
         });
     }
 
-    function filterFlowsTable(q) {
-        const query = q.toLowerCase();
-        const rows = flowTableBody.querySelectorAll("tr");
-        rows.forEach(row => {
-            const txt = row.getAttribute("data-search").toLowerCase();
-            row.style.display = txt.includes(query) ? "" : "none";
-        });
+    // Slide open details drawer
+    async function openInspectorDrawer(flow) {
+        inspectorDrawer.classList.add("open");
+        
+        drawerFlowTitle.textContent = `Flow Conversation #${flow.flow_id}`;
+        drawerFlowSub.textContent = `${flow.src_ip}:${flow.src_port} ➔ ${flow.dst_ip}:${flow.dst_port} (${flow.protocol})`;
+        
+        switchTab("flowPackets");
+        
+        drawerPacketBody.innerHTML = '<tr><td colspan="4" style="text-align:center;"><i class="fa-solid fa-spinner fa-spin"></i> Loading packets...</td></tr>';
+        hexViewer.innerHTML = '<div class="hex-empty-state">No packet selected. Select a packet from the "Packet List" tab first.</div>';
+
+        try {
+            const res = await fetch(`/api/flow-packets/${flow.flow_id}`);
+            if (!res.ok) throw new Error(await res.text());
+            const data = await res.json();
+            
+            drawerPacketBody.innerHTML = "";
+            if (!data.packets || data.packets.length === 0) {
+                drawerPacketBody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);">No detailed packets captured for this flow.</td></tr>';
+                return;
+            }
+
+            data.packets.forEach(pkt => {
+                const tr = document.createElement("tr");
+                tr.innerHTML = `
+                    <td><strong>#${pkt.packet_id}</strong></td>
+                    <td>${pkt.length} B</td>
+                    <td><code>${pkt.tcp_flags || "-"}</code></td>
+                    <td><span class="info-cell">${pkt.sni || pkt.http_host || pkt.dns_query || "Data Payload"}</span></td>
+                `;
+                
+                tr.addEventListener("click", () => {
+                    drawerPacketBody.querySelectorAll("tr").forEach(r => r.classList.remove("selected"));
+                    tr.classList.add("selected");
+                    
+                    hexViewer.innerHTML = formatHexDump(pkt.hex_data);
+                    switchTab("flowHex");
+                });
+
+                drawerPacketBody.appendChild(tr);
+            });
+        } catch (e) {
+            drawerPacketBody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:#ff5858;">Failed to load packets: ${e.message}</td></tr>`;
+        }
+    }
+
+    function switchTab(tabId) {
+        tabBtnPackets.classList.toggle("active", tabId === "flowPackets");
+        tabBtnHex.classList.toggle("active", tabId === "flowHex");
+        
+        tabFlowPackets.classList.toggle("active", tabId === "flowPackets");
+        tabFlowHex.classList.toggle("active", tabId === "flowHex");
+    }
+
+    // Classic Monospace Offset Hex Dump formatter
+    function formatHexDump(hexStr) {
+        if (!hexStr) return '<div class="hex-empty-state">No payload slice data captured.</div>';
+        let result = "";
+        for (let i = 0; i < hexStr.length; i += 32) {
+            const chunk = hexStr.substring(i, i + 32);
+            const offset = (i / 2).toString(16).padStart(4, "0").toUpperCase();
+            
+            let hexBytes = "";
+            let asciiChars = "";
+            for (let j = 0; j < chunk.length; j += 2) {
+                const byte = chunk.substring(j, j + 2);
+                hexBytes += byte + " ";
+                if (j === 14) hexBytes += " "; // spaces center column separator
+                
+                const charCode = parseInt(byte, 16);
+                if (charCode >= 32 && charCode <= 126) {
+                    asciiChars += String.fromCharCode(charCode);
+                } else {
+                    asciiChars += ".";
+                }
+            }
+            const paddedHex = hexBytes.padEnd(49, " ");
+            result += `<div class="hex-row"><span class="hex-offset">${offset}</span><span class="hex-bytes">${paddedHex}</span><span class="hex-ascii">${asciiChars}</span></div>`;
+        }
+        return result;
     }
 
     async function runGeminiAnalysis(flows) {
@@ -473,15 +775,11 @@ document.addEventListener("DOMContentLoaded", () => {
             const res = await fetch("/api/chat", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    flows: flows,
-                    api_key: savedApiKey
-                })
+                body: JSON.stringify({ flows: flows })
             });
 
             if (!res.ok) throw new Error(await res.text());
             
-            // Read stream
             const reader = res.body.getReader();
             const decoder = new TextDecoder("utf-8");
             let buffer = "";
@@ -493,7 +791,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 
                 buffer += decoder.decode(value, { stream: true });
                 const lines = buffer.split("\n\n");
-                buffer = lines.pop(); // keep last incomplete line
+                buffer = lines.pop();
                 
                 for (const line of lines) {
                     if (line.startsWith("data: ")) {
@@ -504,9 +802,7 @@ document.addEventListener("DOMContentLoaded", () => {
                             const data = JSON.parse(dataStr);
                             fullText += data.text;
                             insightContent.innerHTML = formatMarkdown(fullText);
-                        } catch (err) {
-                            // ignore json parse errors for non-json logs
-                        }
+                        } catch (err) {}
                     }
                 }
             }
@@ -521,13 +817,9 @@ document.addEventListener("DOMContentLoaded", () => {
         
         chatInput.value = "";
         
-        // Render user message
         renderChatMessage("user", query);
-        
-        // Scroll to bottom
         chatBody.scrollTop = chatBody.scrollHeight;
         
-        // Render bot thinking bubble
         const botMsgDiv = renderChatMessage("bot", '<div class="typing-indicator"><span></span><span></span><span></span></div>');
         const bubble = botMsgDiv.querySelector(".message-bubble");
         
@@ -538,14 +830,12 @@ document.addEventListener("DOMContentLoaded", () => {
                 body: JSON.stringify({
                     flows: activeFlows,
                     user_query: query,
-                    chat_history: chatHistory,
-                    api_key: savedApiKey
+                    chat_history: chatHistory
                 })
             });
             
             if (!res.ok) throw new Error(await res.text());
             
-            // Parse Stream
             const reader = res.body.getReader();
             const decoder = new TextDecoder("utf-8");
             let buffer = "";
@@ -575,7 +865,6 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
             }
             
-            // Update history
             chatHistory.push({ role: "user", content: query });
             chatHistory.push({ role: "bot", content: fullBotResponse });
             
@@ -614,6 +903,11 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function resetToUploadView() {
+        if (topologyAnimationId) {
+            cancelAnimationFrame(topologyAnimationId);
+            topologyAnimationId = null;
+        }
+        inspectorDrawer.classList.remove("open");
         dashboardView.style.display = "none";
         chatWidget.style.display = "none";
         chatTrigger.style.display = "none";
@@ -701,7 +995,6 @@ document.addEventListener("DOMContentLoaded", () => {
         // Lists
         html = html.replace(/^\s*-\s+(.*)$/gim, '<li>$1</li>');
         html = html.replace(/(<li>.*<\/li>)/g, '<ul>$1</ul>');
-        // clean multiple ul tags
         html = html.replace(/<\/ul>\s*<ul>/g, '');
 
         // Line breaks

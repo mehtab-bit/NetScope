@@ -123,11 +123,15 @@ class TrafficClassifier:
                 category = "FTP File Transfer"
             
             # 2. If category is still Web/UNKNOWN, apply ML classification
+            confidence = 1.0
             if category in ("UNKNOWN", "HTTPS/Web"):
                 # Features: [dst_port, packet_count, byte_count, duration, mean_packet_size]
                 feat = np.array([[dst_port, pkt_count, byte_count, duration, mean_size]])
                 try:
                     pred_class = self.model.predict(feat)[0]
+                    prob_array = self.model.predict_proba(feat)[0]
+                    confidence = float(max(prob_array))
+                    
                     ml_categories = {
                         0: "Web Browsing",
                         1: "Streaming Media",
@@ -137,8 +141,10 @@ class TrafficClassifier:
                     category = ml_categories.get(pred_class, "HTTPS/Web")
                 except Exception:
                     category = "HTTPS/Web"
+                    confidence = 0.5
             
             flow_copy["app_category"] = category
+            flow_copy["ml_confidence"] = confidence
             
             # 3. Anomaly Detection
             anomalies = []

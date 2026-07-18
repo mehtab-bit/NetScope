@@ -29,7 +29,9 @@ When explaining, follow these rules:
         self.model_name = "gemini-2.5-flash"
         self.initialized = False
         
-        if self.api_key:
+        # gen-lang-client is a Google Client/Project ID, not a valid API Key for SDK,
+        # so we skip it to fallback instantly to OpenRouter without API configuration failure.
+        if self.api_key and not self.api_key.startswith("gen-lang-client"):
             try:
                 genai.configure(api_key=self.api_key)
                 self.model = genai.GenerativeModel(
@@ -91,8 +93,12 @@ When explaining, follow these rules:
             prompt = f"Please provide an introductory, beginner-friendly summary of this network traffic capture. Here is the flow data:\n{json.dumps(context, indent=2)}"
             
         if not self.initialized:
-            # Return a friendly fallback stream
-            yield from self._stream_fallback(flows, user_query)
+            # Try OpenRouter fallback first
+            or_key = os.environ.get("OPENROUTER_API_KEY", "")
+            if or_key and not or_key.startswith("your_"):
+                yield from self._stream_openrouter(prompt, or_key, chat_history)
+            else:
+                yield from self._stream_fallback(flows, user_query)
             return
 
         try:
@@ -114,8 +120,70 @@ When explaining, follow these rules:
                     
             yield "data: [DONE]\n\n"
         except Exception as e:
-            yield f"data: {json.dumps({'text': f'⚠️ Gemini Error: {str(e)}. Falling back to local offline analysis.'})}\n\n"
-            yield from self._stream_fallback(flows, user_query)
+            # Try OpenRouter fallback on runtime error
+            or_key = os.environ.get("OPENROUTER_API_KEY", "")
+            if or_key and not or_key.startswith("your_"):
+                yield f"data: {json.dumps({'text': f'⚠️ Gemini API failed: {str(e)}. Attempting OpenRouter Fallback...' })}\n\n"
+                yield from self._stream_openrouter(prompt, or_key, chat_history)
+            else:
+                yield f"data: {json.dumps({'text': f'⚠️ Gemini Error: {str(e)}. Falling back to local offline analysis.'})}\n\n"
+                yield from self._stream_fallback(flows, user_query)
+
+    def _stream_openrouter(self, prompt: str, api_key: str, chat_history: List[dict] = None) -> Generator[str, None, None]:
+        """Streams AI explanation from OpenRouter using python built-in urllib library."""
+        import urllib.request
+        
+        url = "https://openrouter.ai/api/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "http://localhost:8000",
+            "X-Title": "NetScope AI Packet Analyzer"
+        }
+        
+        messages = [{"role": "system", "content": self.SYSTEM_INSTRUCTION}]
+        if chat_history:
+            for msg in chat_history[-6:]:
+                role = "user" if msg["role"] == "user" else "assistant"
+                messages.append({"role": role, "content": msg["content"]})
+                
+        messages.append({"role": "user", "content": prompt})
+        
+        data = {
+            "model": "google/gemini-2.5-flash",
+            "messages": messages,
+            "stream": True
+        }
+        
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(data).encode("utf-8"),
+            headers=headers,
+            method="POST"
+        )
+        
+        try:
+            response = urllib.request.urlopen(req, timeout=12)
+            for line in response:
+                line_str = line.decode("utf-8").strip()
+                if not line_str:
+                    continue
+                if line_str.startswith("data: "):
+                    event_data = line_str[6:].strip()
+                    if event_data == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(event_data)
+                        content = chunk["choices"][0]["delta"].get("content", "")
+                        if content:
+                            yield f"data: {json.dumps({'text': content})}\n\n"
+                    except Exception:
+                        pass
+            yield "data: [DONE]\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'text': f'⚠️ OpenRouter Fallback failed: {str(e)}. Running local offline analysis.'})}\n\n"
+            # final fallback to local rule-based summary
+            yield from self._stream_fallback([], prompt)
 
     def _stream_fallback(self, flows: List[dict], query: str = None) -> Generator[str, None, None]:
         """Provides a detailed mock streaming response when API key is missing."""

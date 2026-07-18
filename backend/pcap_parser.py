@@ -390,6 +390,7 @@ class PcapParser:
             "sni": sni,
             "http_host": http_host,
             "dns_query": dns_query,
+            "hex_data": data[:96].hex(),
         }
 
     def _add_to_flow(self, packet: dict):

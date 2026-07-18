@@ -1,0 +1,16 @@
+# Local Environment & Secrets
+.env
+.env.local
+
+# Python Virtual Environments
+.venv/
+.venv_pcap/
+
+# Python Cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# OS Files
+.DS_Store
+Thumbs.db

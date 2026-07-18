@@ -1,7 +1,7 @@
 import os
 import shutil
 import tempfile
-from fastapi import FastAPI, UploadFile, File, HTTPException, Body
+from fastapi import FastAPI, UploadFile, File, HTTPException, Body, Response, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import StreamingResponse, FileResponse
@@ -11,7 +11,25 @@ from backend.pcap_parser import PcapParser
 from backend.traffic_classifier import TrafficClassifier
 from backend.gemini_streamer import GeminiStreamer
 
+# Dynamic .env configuration loader for secure key management
+root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+env_path = os.path.join(root_dir, ".env")
+if os.path.exists(env_path):
+    with open(env_path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                key, val = line.split("=", 1)
+                os.environ.setdefault(key.strip(), val.strip())
+
 app = FastAPI(title="AI Packet Analyzer API", version="1.0")
+
+# Session cache for detailed flow inspection
+session_cache = {
+    "filename": None,
+    "packets": [],
+    "flows": []
+}
 
 # Enable CORS for local development
 app.add_middleware(
@@ -57,6 +75,30 @@ def get_demos():
         }
     ]
 
+@app.post("/api/config/key")
+def configure_key(response: Response, data: dict = Body(...)):
+    """Saves the Gemini API Key into an HTTP-Only cookie for XSS prevention."""
+    api_key = data.get("api_key", "").strip()
+    if not api_key:
+        response.delete_cookie("gemini_api_key")
+        return {"status": "cleared"}
+    
+    response.set_cookie(
+        key="gemini_api_key",
+        value=api_key,
+        httponly=True,
+        samesite="lax",
+        max_age=3600*24*7 # 7 days
+    )
+    return {"status": "configured"}
+
+@app.get("/api/config/status")
+def get_config_status(request: Request):
+    """Checks if the Gemini API key is configured on the server or cookie."""
+    cookie_key = request.cookies.get("gemini_api_key")
+    env_key = os.environ.get("GEMINI_API_KEY")
+    return {"configured": bool(cookie_key or env_key)}
+
 @app.post("/api/upload")
 async def upload_pcap(file: UploadFile = File(...)):
     """Uploads a PCAP file, parses it, and classifies the traffic flows."""
@@ -81,6 +123,11 @@ async def upload_pcap(file: UploadFile = File(...)):
         
         # Run ML classification
         classified_flows = classifier.classify_flows(flows)
+        
+        # Save to session cache
+        session_cache["filename"] = file.filename
+        session_cache["packets"] = packets
+        session_cache["flows"] = classified_flows
         
         return {
             "filename": file.filename,
@@ -116,6 +163,11 @@ def analyze_demo(demo_id: str):
         packets, flows = parser.parse()
         classified_flows = classifier.classify_flows(flows)
         
+        # Save to session cache
+        session_cache["filename"] = filename
+        session_cache["packets"] = packets
+        session_cache["flows"] = classified_flows
+        
         return {
             "filename": filename,
             "packets_count": len(packets),
@@ -126,8 +178,47 @@ def analyze_demo(demo_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to analyze demo capture: {str(e)}")
 
+@app.get("/api/flow-packets/{flow_id}")
+def get_flow_packets(flow_id: int):
+    """Returns packets belonging to a specific flow for the inspection drawer."""
+    target_flow = None
+    for f in session_cache["flows"]:
+        if f["flow_id"] == flow_id:
+            target_flow = f
+            break
+            
+    if not target_flow:
+        raise HTTPException(status_code=404, detail="Flow conversation not found.")
+        
+    src_ip = target_flow["src_ip"]
+    dst_ip = target_flow["dst_ip"]
+    src_port = target_flow["src_port"]
+    dst_port = target_flow["dst_port"]
+    protocol = target_flow["protocol"]
+    
+    flow_packets = []
+    for p in session_cache["packets"]:
+        match_forward = (
+            p["src_ip"] == src_ip and p["dst_ip"] == dst_ip and
+            p["src_port"] == src_port and p["dst_port"] == dst_port and
+            p["protocol"] == protocol
+        )
+        match_reverse = (
+            p["dst_ip"] == src_ip and p["src_ip"] == dst_ip and
+            p["dst_port"] == src_port and p["src_port"] == dst_port and
+            p["protocol"] == protocol
+        )
+        if match_forward or match_reverse:
+            flow_packets.append(p)
+            
+    return {
+        "flow_id": flow_id,
+        "packets": flow_packets[:50]  # Cap at 50 packets for UI performance
+    }
+
 @app.post("/api/chat")
 def chat_explain(
+    request: Request,
     flows: List[dict] = Body(..., embed=True),
     user_query: Optional[str] = Body(None, embed=True),
     chat_history: Optional[List[dict]] = Body(None, embed=True),
@@ -136,7 +227,11 @@ def chat_explain(
     """
     Streams a conversational Gemini explanation of the packet flows.
     """
-    streamer = GeminiStreamer(api_key=api_key)
+    # Key precedence: 1. HTTP-Only Cookie, 2. Env Var, 3. Body Param
+    cookie_key = request.cookies.get("gemini_api_key")
+    resolved_key = cookie_key or os.environ.get("GEMINI_API_KEY") or api_key
+    
+    streamer = GeminiStreamer(api_key=resolved_key)
     
     return StreamingResponse(
         streamer.stream_analysis(flows, user_query, chat_history),

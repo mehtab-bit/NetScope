@@ -33,15 +33,10 @@
             </div>
             
             <div class="sidebar-section">
-                <h2><i class="fa-solid fa-key"></i> Gemini AI Configuration</h2>
+                <h2><i class="fa-solid fa-brain"></i> AI Analysis Engine</h2>
                 <div class="api-key-box">
-                    <p class="section-desc">Pasting your Gemini API Key enables the interactive network chat assistant.</p>
-                    <div class="input-with-button">
-                        <input type="password" id="apiKeyInput" placeholder="Enter GEMINI_API_KEY..." />
-                        <button id="saveKeyBtn" title="Save Key"><i class="fa-solid fa-check"></i></button>
-                    </div>
                     <span id="keyStatus" class="key-status status-unconfigured">
-                        <i class="fa-solid fa-circle-notch fa-spin"></i> Checking env variable...
+                        <i class="fa-solid fa-circle-notch fa-spin"></i> Checking server status...
                     </span>
                 </div>
             </div>
@@ -151,20 +146,25 @@
                         </div>
                     </div>
 
-                    <!-- VISUAL CHARTS -->
+                    <!-- VISUAL CHARTS & TOPOLOGY -->
                     <div class="glass-card visual-card">
-                        <h3><i class="fa-solid fa-chart-pie"></i> Visual Traffic Split</h3>
+                        <h3><i class="fa-solid fa-circle-nodes"></i> Network Topology & Traffic Split</h3>
                         <div class="chart-container">
-                            <div class="chart-box">
-                                <h4>Protocol Distribution</h4>
-                                <div class="protocol-bar-chart" id="protocolChart">
-                                    <!-- Rendered Dynamically -->
-                                </div>
+                            <div class="topology-box">
+                                <canvas id="topologyCanvas" width="550" height="240"></canvas>
                             </div>
-                            <div class="chart-box">
-                                <h4>Application Categories</h4>
-                                <div class="app-bar-chart" id="appChart">
-                                    <!-- Rendered Dynamically -->
+                            <div class="charts-row">
+                                <div class="chart-box">
+                                    <h4>Protocol Distribution</h4>
+                                    <div class="protocol-bar-chart" id="protocolChart">
+                                        <!-- Rendered Dynamically -->
+                                    </div>
+                                </div>
+                                <div class="chart-box">
+                                    <h4>Application Categories</h4>
+                                    <div class="app-bar-chart" id="appChart">
+                                        <!-- Rendered Dynamically -->
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -182,6 +182,14 @@
                                 <input type="text" id="flowSearch" placeholder="Search IP, Port, Category..." />
                             </div>
                         </div>
+                    </div>
+                    <!-- Quick-Filter Pills -->
+                    <div class="table-filters" id="tableFilters">
+                        <button class="filter-pill active" data-filter="all">All Connections</button>
+                        <button class="filter-pill" data-filter="TCP">TCP Only</button>
+                        <button class="filter-pill" data-filter="UDP">UDP Only</button>
+                        <button class="filter-pill" data-filter="DNS">DNS Queries</button>
+                        <button class="filter-pill" data-filter="threat">Warnings / Threats</button>
                     </div>
                     <div class="table-responsive">
                         <table>
@@ -287,6 +295,54 @@
                 </div>
             </div>
             <button class="btn-primary onboarding-dismiss" id="onboardingDismissBtn">Start Analyzing!</button>
+        </div>
+    </div>
+
+    <!-- DETAIL INSPECTOR DRAWER -->
+    <div class="inspector-drawer" id="inspectorDrawer">
+        <div class="drawer-header">
+            <div class="drawer-title">
+                <i class="fa-solid fa-magnifying-glass-chart"></i>
+                <div>
+                    <h3 id="drawerFlowTitle">Flow Conversation Details</h3>
+                    <span id="drawerFlowSub">Loading 5-tuple...</span>
+                </div>
+            </div>
+            <button id="closeDrawerBtn" class="close-drawer-btn" aria-label="Close Inspector"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        
+        <div class="drawer-tabs">
+            <button class="drawer-tab active" data-tab="flowPackets" id="tabBtnPackets">Packet List</button>
+            <button class="drawer-tab" data-tab="flowHex" id="tabBtnHex">Hex Stream Explorer</button>
+        </div>
+        
+        <div class="drawer-body">
+            <!-- TAB 1: Packet List -->
+            <div class="drawer-tab-content active" id="tabFlowPackets">
+                <div class="table-responsive-drawer">
+                    <table class="drawer-packet-table">
+                        <thead>
+                            <tr>
+                                <th>No.</th>
+                                <th>Length</th>
+                                <th>Flags</th>
+                                <th>Info</th>
+                            </tr>
+                        </thead>
+                        <tbody id="drawerPacketBody">
+                            <!-- Packets loaded dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <!-- TAB 2: Monospace Hex Explorer -->
+            <div class="drawer-tab-content" id="tabFlowHex">
+                <p class="section-desc-drawer">Select a packet from the list tab first to inspect its raw bytes: </p>
+                <div class="hex-viewer" id="hexViewer">
+                    <div class="hex-empty-state">No packet selected. Select a packet from the 'Packet List' tab to inspect raw bytes.</div>
+                </div>
+            </div>
         </div>
     </div>
 </body>
