@@ -154,7 +154,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // AI Insight Regenerate
     regenerateInsightBtn.addEventListener("click", () => {
         if (activeFlows.length > 0) {
-            insightContent.innerHTML = '<p class="loader"><i class="fa-solid fa-wand-magic-sparkles fa-spin"></i> Refreshing AI insights...</p>';
+            insightContent.innerHTML = '<p><i class="fa-solid fa-spinner fa-spin"></i> Refreshing analysis...</p>';
             runGeminiAnalysis(activeFlows);
         }
     });
@@ -284,7 +284,7 @@ document.addEventListener("DOMContentLoaded", () => {
         hideLoading();
         
         // Update file indicator
-        activeFileIndicator.innerHTML = `<span class="pulse" style="background:#38ef7d;"></span> Analyzed: ${data.filename}`;
+        activeFileIndicator.innerHTML = `<span class="pulse"></span> ${data.filename}`;
         
         // Show viewports
         uploadArea.style.display = "none";
@@ -326,15 +326,13 @@ document.addEventListener("DOMContentLoaded", () => {
         
         metricThreats.textContent = threatCount;
         if (threatCount > 0) {
-            threatCard.classList.add("bg-red");
+            threatIcon.className = "metric-icon bg-red";
             threatIcon.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i>';
-            threatLabel.textContent = "Security Warnings";
-            threatIcon.style.color = "white";
+            threatLabel.textContent = "Warnings";
         } else {
-            threatCard.className = "metric-card";
+            threatIcon.className = "metric-icon bg-green";
             threatIcon.innerHTML = '<i class="fa-solid fa-shield-halved"></i>';
-            threatLabel.textContent = "Threats Identified";
-            threatIcon.style.color = "";
+            threatLabel.textContent = "Threats";
         }
 
         // Render charts
@@ -349,8 +347,8 @@ document.addEventListener("DOMContentLoaded", () => {
         // Run animations
         setupScrollAnimations();
 
-        // Call Gemini for plain English summary
-        insightContent.innerHTML = '<p class="loader"><i class="fa-solid fa-wand-magic-sparkles fa-spin"></i> Formulating AI trace summary...</p>';
+        // Call AI for analysis report
+        insightContent.innerHTML = '<p><i class="fa-solid fa-spinner fa-spin"></i> Generating analysis...</p>';
         runGeminiAnalysis(data.flows);
     }
 
@@ -391,19 +389,20 @@ document.addEventListener("DOMContentLoaded", () => {
         Object.entries(protoCounts).sort((a,b) => b[1] - a[1]).forEach(([proto, bytes]) => {
             const pct = maxProto > 0 ? (bytes / maxProto) * 100 : 0;
             const sizeStr = bytes > 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)}MB` : `${(bytes / 1024).toFixed(1)}KB`;
+            const fillClass = proto === "TCP" ? "proto-tcp" : proto === "UDP" ? "proto-udp" : "proto-other";
             
             const row = document.createElement("div");
-            row.className = "chart-row";
+            row.className = "bar-row";
             row.innerHTML = `
-                <span class="chart-label">${proto}</span>
-                <div class="chart-track">
-                    <div class="chart-fill" style="width: 0%; background: linear-gradient(90deg, #4776e6, #8e54e9)"></div>
+                <span class="bar-label">${proto}</span>
+                <div class="bar-track">
+                    <div class="bar-fill ${fillClass}" style="width: 0%"></div>
                 </div>
-                <span class="chart-val">${sizeStr}</span>
+                <span class="bar-value">${sizeStr}</span>
             `;
             protocolChart.appendChild(row);
             setTimeout(() => {
-                row.querySelector(".chart-fill").style.width = `${pct}%`;
+                row.querySelector(".bar-fill").style.width = `${pct}%`;
             }, 100);
         });
 
@@ -414,17 +413,17 @@ document.addEventListener("DOMContentLoaded", () => {
             const sizeStr = bytes > 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)}MB` : `${(bytes / 1024).toFixed(1)}KB`;
             
             const row = document.createElement("div");
-            row.className = "chart-row";
+            row.className = "bar-row";
             row.innerHTML = `
-                <span class="chart-label">${app}</span>
-                <div class="chart-track">
-                    <div class="chart-fill" style="width: 0%; background: linear-gradient(90deg, #8e54e9, #f857a6)"></div>
+                <span class="bar-label">${app}</span>
+                <div class="bar-track">
+                    <div class="bar-fill app-fill" style="width: 0%"></div>
                 </div>
-                <span class="chart-val">${sizeStr}</span>
+                <span class="bar-value">${sizeStr}</span>
             `;
             appChart.appendChild(row);
             setTimeout(() => {
-                row.querySelector(".chart-fill").style.width = `${pct}%`;
+                row.querySelector(".bar-fill").style.width = `${pct}%`;
             }, 100);
         });
     }
@@ -463,7 +462,7 @@ document.addEventListener("DOMContentLoaded", () => {
             x: width / 2,
             y: height / 2,
             size: 13,
-            color: "#4776e6",
+            color: "#22d3ee",
             isCenter: true
         };
         topologyNodes.push(centerNode);
@@ -485,11 +484,11 @@ document.addEventListener("DOMContentLoaded", () => {
             const x = width / 2 + Math.cos(angle) * radius;
             const y = height / 2 + Math.sin(angle) * radius;
 
-            let color = "#8e54e9";
+            let color = "#60a5fa";
             if (flow.anomalies && flow.anomalies.length > 0) {
-                color = "#ff5858";
+                color = "#f87171";
             } else if (flow.protocol === "DNS") {
-                color = "#f857a6";
+                color = "#a78bfa";
             }
 
             const label = flow.app_category !== "UNKNOWN" ? flow.app_category : flow.domain || flow.dst_ip;
@@ -553,18 +552,18 @@ document.addEventListener("DOMContentLoaded", () => {
             ctx.beginPath();
             ctx.arc(x, y, p.size, 0, Math.PI * 2);
             ctx.fillStyle = p.color;
-            ctx.shadowBlur = 4;
-            ctx.shadowColor = p.color;
+            ctx.globalAlpha = 0.7;
             ctx.fill();
-            ctx.shadowBlur = 0; // reset glow
+            ctx.globalAlpha = 1.0;
+
         });
 
         // Draw Nodes
         topologyNodes.forEach(node => {
             if (node.isCenter) {
                 ctx.beginPath();
-                ctx.arc(node.x, node.y, node.size + Math.sin(Date.now() / 180) * 2.5, 0, Math.PI * 2);
-                ctx.fillStyle = "rgba(71, 118, 230, 0.12)";
+                ctx.arc(node.x, node.y, node.size + 4, 0, Math.PI * 2);
+                ctx.fillStyle = "rgba(34, 211, 238, 0.08)";
                 ctx.fill();
             }
 
@@ -572,12 +571,12 @@ document.addEventListener("DOMContentLoaded", () => {
             ctx.arc(node.x, node.y, node.size, 0, Math.PI * 2);
             ctx.fillStyle = node.color;
             ctx.fill();
-            ctx.lineWidth = 1.5;
-            ctx.strokeStyle = "rgba(255, 255, 255, 0.4)";
+            ctx.lineWidth = 1;
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
             ctx.stroke();
 
             // Label text
-            ctx.font = "9px Inter, sans-serif";
+            ctx.font = "10px Outfit, sans-serif";
             ctx.fillStyle = "#a0aec0";
             ctx.textAlign = "center";
             ctx.fillText(node.label, node.x, node.y + node.size + 11);
@@ -609,7 +608,7 @@ document.addEventListener("DOMContentLoaded", () => {
             }
             if (flow.anomalies && flow.anomalies.length > 0) {
                 secHtml = '<i class="fa-solid fa-circle-exclamation status-threat" title="Anomaly Flagged"></i> Warning';
-                tr.style.background = "rgba(255, 88, 88, 0.04)";
+                tr.style.background = "rgba(248, 113, 113, 0.04)";
             }
 
             const sizeStr = flow.byte_count > 1024 * 1024 ? `${(flow.byte_count / (1024*1024)).toFixed(2)} MB` : `${(flow.byte_count / 1024).toFixed(1)} KB`;
@@ -886,7 +885,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (!container) return;
         
         const toast = document.createElement("div");
-        toast.className = `toast toast-${type}`;
+        toast.className = `toast ${type}`;
         
         const iconClass = type === "success" ? "fa-circle-check" : "fa-circle-exclamation";
         toast.innerHTML = `
@@ -913,7 +912,7 @@ document.addEventListener("DOMContentLoaded", () => {
         chatTrigger.style.display = "none";
         newAnalysisBtn.style.display = "none";
         uploadArea.style.display = "flex";
-        activeFileIndicator.innerHTML = '<span class="pulse"></span> Ready to analyze';
+        activeFileIndicator.innerHTML = '<span class="pulse"></span> Ready';
         activeFlows = [];
         chatHistory = [];
         pcapFileInput.value = "";
@@ -1002,4 +1001,244 @@ document.addEventListener("DOMContentLoaded", () => {
         
         return html;
     }
+    
+    // ============================================
+    // DPI ENGINE INTEGRATION
+    // ============================================
+    let dpiRules = [];
+    const dpiRuleType = document.getElementById("dpiRuleType");
+    const dpiRuleValue = document.getElementById("dpiRuleValue");
+    const dpiAddRuleBtn = document.getElementById("dpiAddRuleBtn");
+    const dpiRulesList = document.getElementById("dpiRulesList");
+    const dpiRunBtn = document.getElementById("dpiRunBtn");
+    const dpiDownloadBtn = document.getElementById("dpiDownloadBtn");
+    const dpiResults = document.getElementById("dpiResults");
+
+    if (dpiAddRuleBtn) {
+        dpiAddRuleBtn.addEventListener("click", () => {
+            const type = dpiRuleType.value;
+            const value = dpiRuleValue.value.trim();
+            if (!value) {
+                showToast("Enter a value for the rule.", "error");
+                return;
+            }
+            dpiRules.push({ type, value });
+            dpiRuleValue.value = "";
+            renderDpiRules();
+        });
+    }
+
+    if (dpiRunBtn) {
+        dpiRunBtn.addEventListener("click", async () => {
+            if (dpiRules.length === 0) {
+                showToast("Add at least one blocking rule before running.", "error");
+                return;
+            }
+            if (activeFlows.length === 0) {
+                showToast("No capture loaded. Upload a PCAP first.", "error");
+                return;
+            }
+
+            dpiRunBtn.disabled = true;
+            dpiRunBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Running...';
+
+            try {
+                const res = await fetch("/api/dpi/run", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ rules: dpiRules })
+                });
+                if (!res.ok) {
+                    const errData = await res.json();
+                    throw new Error(errData.detail || "DPI engine failed");
+                }
+                const data = await res.json();
+                renderDpiResults(data);
+                showToast("DPI engine completed successfully!", "success");
+            } catch (e) {
+                showToast(`DPI Error: ${e.message}`, "error");
+                dpiResults.style.display = "none";
+            } finally {
+                dpiRunBtn.disabled = false;
+                dpiRunBtn.innerHTML = '<i class="fa-solid fa-bolt"></i> Run DPI Engine';
+            }
+        });
+    }
+
+    function renderDpiRules() {
+        dpiRulesList.innerHTML = "";
+        dpiRules.forEach((rule, idx) => {
+            const item = document.createElement("div");
+            item.className = "dpi-rule-item";
+            item.innerHTML = `
+                <code>${rule.type} ${rule.value}</code>
+                <button title="Remove" data-idx="${idx}"><i class="fa-solid fa-xmark"></i></button>
+            `;
+            item.querySelector("button").addEventListener("click", () => {
+                dpiRules.splice(idx, 1);
+                renderDpiRules();
+            });
+            dpiRulesList.appendChild(item);
+        });
+    }
+
+    function renderDpiResults(data) {
+        dpiResults.style.display = "block";
+        dpiResults.innerHTML = `
+            <div class="stat-line"><span>Total Packets</span><span class="stat-value">${data.total_packets}</span></div>
+            <div class="stat-line"><span>Forwarded</span><span class="stat-value">${data.forwarded}</span></div>
+            <div class="stat-line"><span>Dropped</span><span class="stat-value stat-dropped">${data.dropped}</span></div>
+            <div class="stat-line"><span>Active Flows</span><span class="stat-value">${data.active_flows}</span></div>
+        `;
+        if (data.app_breakdown && Object.keys(data.app_breakdown).length > 0) {
+            dpiResults.innerHTML += '<hr style="border-color:#2a2d3e;margin:6px 0;">';
+            for (const [app, count] of Object.entries(data.app_breakdown)) {
+                dpiResults.innerHTML += `<div class="stat-line"><span>${app}</span><span class="stat-value">${count} pkts</span></div>`;
+            }
+        }
+        if (data.output_file) {
+            dpiDownloadBtn.style.display = "inline-flex";
+        }
+    }
+
+    if (dpiDownloadBtn) {
+        dpiDownloadBtn.addEventListener("click", async () => {
+            try {
+                const res = await fetch("/api/dpi/download");
+                if (!res.ok) throw new Error("Download failed");
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement("a");
+                link.href = url;
+                link.download = "filtered_output.pcap";
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                showToast("Filtered PCAP downloaded.", "success");
+            } catch (e) {
+                showToast(`Download failed: ${e.message}`, "error");
+            }
+        });
+    }
+
+    // ============================================
+    // TABS & GEOIP INTEGRATION
+    // ============================================
+    const btnTabFlows = document.getElementById("btnTabFlows");
+    const btnTabGeo = document.getElementById("btnTabGeo");
+    const tabFlows = document.getElementById("tabFlows");
+    const tabGeo = document.getElementById("tabGeo");
+    const geoIpTableBody = document.getElementById("geoIpTableBody");
+
+    if (btnTabFlows && btnTabGeo) {
+        btnTabFlows.addEventListener("click", () => {
+            btnTabFlows.classList.add("active");
+            btnTabFlows.style.background = "rgba(30,215,96,0.1)";
+            btnTabGeo.classList.remove("active");
+            btnTabGeo.style.background = "transparent";
+            tabFlows.style.display = "block";
+            tabGeo.style.display = "none";
+        });
+        btnTabGeo.addEventListener("click", () => {
+            btnTabGeo.classList.add("active");
+            btnTabGeo.style.background = "rgba(30,215,96,0.1)";
+            btnTabFlows.classList.remove("active");
+            btnTabFlows.style.background = "transparent";
+            tabGeo.style.display = "block";
+            tabFlows.style.display = "none";
+            
+            // Fetch GeoIP data if not fetched yet
+            if (activeFlows.length > 0 && !tabGeo.dataset.loaded) {
+                loadGeoIpData();
+            }
+        });
+    }
+
+    async function loadGeoIpData() {
+        if (!activeFlows || activeFlows.length === 0) return;
+        
+        geoIpTableBody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 2rem; color: var(--text-muted);"><i class="fa-solid fa-spinner fa-spin"></i> Gathering geographical data...</td></tr>';
+        
+        // Extract external IPs
+        const ips = new Set();
+        const ipStats = {};
+        
+        activeFlows.forEach(f => {
+            // Very basic private IP filter, backend does it better but we aggregate here
+            const isPrivate = (ip) => ip.startsWith("10.") || ip.startsWith("192.168.") || ip.startsWith("172.16.") || ip.startsWith("127.");
+            
+            [f.src_ip, f.dst_ip].forEach(ip => {
+                if (!isPrivate(ip)) {
+                    ips.add(ip);
+                    if (!ipStats[ip]) ipStats[ip] = { flows: 0, bytes: 0 };
+                    ipStats[ip].flows++;
+                    ipStats[ip].bytes += f.byte_count;
+                }
+            });
+        });
+
+        const ipList = Array.from(ips);
+        if (ipList.length === 0) {
+            geoIpTableBody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 2rem; color: var(--text-muted);">No external IP addresses found in capture.</td></tr>';
+            return;
+        }
+
+        try {
+            const res = await fetch("/api/geoip", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ ips: ipList })
+            });
+            
+            if (!res.ok) throw new Error("GeoIP fetch failed");
+            
+            const data = await res.json();
+            const results = data.results || {};
+            
+            // Map results to array and sort by bytes (Top Talkers)
+            const topTalkers = Object.entries(results).map(([ip, info]) => {
+                return {
+                    ip,
+                    country: info.country || "Unknown",
+                    countryCode: info.countryCode ? info.countryCode.toLowerCase() : "",
+                    city: info.city || "Unknown",
+                    isp: info.isp || "Unknown",
+                    stats: ipStats[ip]
+                };
+            }).sort((a, b) => b.stats.bytes - a.stats.bytes);
+            
+            geoIpTableBody.innerHTML = "";
+            topTalkers.forEach(t => {
+                const tr = document.createElement("tr");
+                const flagHtml = t.countryCode ? `<img src="https://flagcdn.com/16x12/${t.countryCode}.png" alt="${t.countryCode}" style="margin-right: 8px; vertical-align: middle;">` : '🏳️ ';
+                tr.innerHTML = `
+                    <td>${flagHtml}${t.country}</td>
+                    <td>${t.city}</td>
+                    <td><code>${t.ip}</code></td>
+                    <td style="max-width: 150px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${t.isp}">${t.isp}</td>
+                    <td>${t.stats.flows}</td>
+                    <td>${(t.stats.bytes / 1024).toFixed(1)} KB</td>
+                `;
+                geoIpTableBody.appendChild(tr);
+            });
+            
+            tabGeo.dataset.loaded = "true";
+            
+        } catch (e) {
+            geoIpTableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; padding: 2rem; color: #ff6b6b;">Failed to load GeoIP data: ${e.message}</td></tr>`;
+        }
+    }
+    
+    // Reset GeoIP loaded state when new file uploaded
+    const originalRenderTable = window.renderFlowTable;
+    // Note: renderFlowTable is actually not globally exposed. We must hook into the analysis render logic.
+    // The easiest way is to observe activeFlows or hook when activeFlows is populated (which is done in startAnalysis/fetchDemo).
+    // Let's just clear the dataset loaded flag in UI reset.
+    const uploadInput = document.getElementById("pcapFile");
+    if (uploadInput) {
+        uploadInput.addEventListener("change", () => {
+            tabGeo.dataset.loaded = "";
+        });
+    }
+
 });

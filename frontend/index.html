@@ -3,49 +3,40 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="AI-powered full-stack network packet analyzer with real-time ML traffic classification and interactive generative AI explanations.">
-    <title>AI NetScope — Intelligent Network Analyzer</title>
-    <!-- Outfit Font & Icons -->
+    <meta name="description" content="Full-stack network packet analyzer with ML traffic classification, interactive C++ DPI engine, and AI-powered explanations.">
+    <title>NetScope — Network Packet Analyzer</title>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <!-- FontAwesome for Premium Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Custom Style -->
     <link rel="stylesheet" href="/static/style.css">
-    <!-- Frontend Logic -->
     <script src="/static/app.js" defer></script>
 </head>
 <body>
-    <!-- BACKGROUND GLOW ORBS -->
-    <div class="bg-glow-orb-1"></div>
-    <div class="bg-glow-orb-2"></div>
-
     <div class="app-container">
         
         <!-- SIDEBAR -->
         <aside class="sidebar" id="sidebar">
             <button class="close-sidebar-btn" id="closeSidebarBtn" aria-label="Close menu"><i class="fa-solid fa-xmark"></i></button>
             <div class="logo-area">
-                <i class="fa-solid fa-microchip logo-icon"></i>
+                <i class="fa-solid fa-network-wired logo-icon"></i>
                 <div class="logo-text">
                     <h1>NetScope<span>.ai</span></h1>
-                    <p>Vibe Coding AI Edition</p>
+                    <p>Deep Packet Inspector</p>
                 </div>
             </div>
             
             <div class="sidebar-section">
-                <h2><i class="fa-solid fa-brain"></i> AI Analysis Engine</h2>
+                <h2><i class="fa-solid fa-signal"></i> AI Status</h2>
                 <div class="api-key-box">
                     <span id="keyStatus" class="key-status status-unconfigured">
-                        <i class="fa-solid fa-circle-notch fa-spin"></i> Checking server status...
+                        <i class="fa-solid fa-circle-notch fa-spin"></i> Checking...
                     </span>
                 </div>
             </div>
             
             <div class="sidebar-section">
-                <h2><i class="fa-solid fa-play"></i> One-Click Demos</h2>
-                <p class="section-desc">New to networking? Click a pre-loaded simulation to analyze traffic instantly!</p>
+                <h2><i class="fa-solid fa-play"></i> Demo Captures</h2>
+                <p class="section-desc">Load a pre-built simulation to explore traffic analysis instantly.</p>
                 <div class="demo-list" id="demoList">
-                    <!-- Loaded dynamically -->
                     <div class="demo-card skeleton"></div>
                     <div class="demo-card skeleton"></div>
                 </div>
@@ -63,14 +54,14 @@
                 <div class="header-left">
                     <button class="hamburger-btn" id="hamburgerBtn" aria-label="Open menu"><i class="fa-solid fa-bars"></i></button>
                     <div class="header-welcome">
-                        <h2>Network Diagnostics Hub</h2>
-                        <p>Inspect, classify, and secure packet data using Local Machine Learning & Generative AI.</p>
+                        <h2>Network Analysis</h2>
+                        <p>Inspect, classify, and filter packet data using ML & AI.</p>
                     </div>
                 </div>
                 <div class="header-actions">
                     <button id="newAnalysisBtn" class="btn-secondary btn-small" style="display: none; margin-right: 12px;"><i class="fa-solid fa-cloud-arrow-up"></i> New Analysis</button>
                     <div class="active-file-indicator" id="activeFileIndicator">
-                        <span class="pulse"></span> Ready to analyze
+                        <span class="pulse"></span> Ready
                     </div>
                 </div>
             </header>
@@ -79,11 +70,11 @@
             <section class="upload-section" id="uploadArea">
                 <div class="upload-card">
                     <i class="fa-solid fa-cloud-arrow-up upload-icon"></i>
-                    <h3>Drag & Drop PCAP Capture</h3>
-                    <p>Upload any standard <code>.pcap</code> file from Wireshark, tcpdump, or your router.</p>
+                    <h3>Upload PCAP Capture</h3>
+                    <p>Drag & drop any standard <code>.pcap</code> file from Wireshark, tcpdump, or your router.</p>
                     <label for="pcapFile" class="btn-primary">Browse File</label>
                     <input type="file" id="pcapFile" accept=".pcap" style="display: none;" />
-                    <p class="upload-note">Max file size 20MB. Captured IP headers are parsed fully on-server.</p>
+                    <p class="upload-note">Max 20MB. IP headers parsed fully on-server.</p>
                 </div>
             </section>
 
@@ -91,139 +82,183 @@
             <div class="loading-overlay" id="loadingOverlay" style="display: none;">
                 <div class="loader-box">
                     <i class="fa-solid fa-network-wired loader-icon fa-spin"></i>
-                    <h3>Deep Packet Inspection in Progress</h3>
-                    <p id="loaderMessage">Reconstructing network flows, extracting TLS SNI headers, and applying local ML models...</p>
+                    <h3>Processing Capture</h3>
+                    <p id="loaderMessage">Reconstructing flows, extracting TLS SNI, running ML classifier...</p>
                 </div>
             </div>
 
-            <!-- DASHBOARD VIEW (HIDDEN BY DEFAULT) -->
+            <!-- DASHBOARD VIEW -->
             <div class="dashboard-grid" id="dashboardView" style="display: none;">
                 
-                <!-- ROW 1: METRICS -->
+                <!-- METRICS ROW -->
                 <div class="metrics-row">
                     <div class="metric-card">
                         <div class="metric-icon bg-blue"><i class="fa-solid fa-network-wired"></i></div>
                         <div class="metric-details">
                             <span class="metric-value" id="metricPackets">0</span>
-                            <span class="metric-label">Packets Read</span>
+                            <span class="metric-label">Packets</span>
                         </div>
                     </div>
                     <div class="metric-card">
                         <div class="metric-icon bg-purple"><i class="fa-solid fa-arrows-spin"></i></div>
                         <div class="metric-details">
                             <span class="metric-value" id="metricFlows">0</span>
-                            <span class="metric-label">Assembled Flows</span>
+                            <span class="metric-label">Flows</span>
                         </div>
                     </div>
                     <div class="metric-card">
                         <div class="metric-icon bg-green"><i class="fa-solid fa-chart-line"></i></div>
                         <div class="metric-details">
                             <span class="metric-value" id="metricVolume">0 KB</span>
-                            <span class="metric-label">Total Data Size</span>
+                            <span class="metric-label">Volume</span>
                         </div>
                     </div>
                     <div class="metric-card" id="threatCard">
                         <div class="metric-icon bg-gray" id="threatIcon"><i class="fa-solid fa-shield-halved"></i></div>
                         <div class="metric-details">
                             <span class="metric-value" id="metricThreats">0</span>
-                            <span class="metric-label" id="threatLabel">Threats Identified</span>
+                            <span class="metric-label" id="threatLabel">Threats</span>
                         </div>
                     </div>
                 </div>
 
-                <!-- ROW 2: GENERAL EXPLAINER + CHARTS -->
+                <!-- ANALYSIS + CHARTS -->
                 <div class="middle-layout">
-                    <!-- AI INSIGHT CARD (Beginner Guide) -->
                     <div class="glass-card ai-insight-card">
                         <div class="card-header">
-                            <h3><i class="fa-solid fa-wand-magic-sparkles"></i> AI Network Analysis</h3>
+                            <h3><i class="fa-solid fa-chart-bar"></i> Traffic Analysis</h3>
                             <button class="btn-secondary btn-small" id="regenerateInsightBtn">
                                 <i class="fa-solid fa-rotate-right"></i> Refresh
                             </button>
                         </div>
                         <div class="insight-content markdown-body" id="insightContent">
-                            <p>Loading AI-generated plain English report... network traffic is being parsed.</p>
+                            <p>Loading analysis report...</p>
                         </div>
                     </div>
 
-                    <!-- VISUAL CHARTS & TOPOLOGY -->
                     <div class="glass-card visual-card">
-                        <h3><i class="fa-solid fa-circle-nodes"></i> Network Topology & Traffic Split</h3>
+                        <h3><i class="fa-solid fa-circle-nodes"></i> Topology & Traffic Split</h3>
                         <div class="chart-container">
                             <div class="topology-box">
-                                <canvas id="topologyCanvas" width="550" height="240"></canvas>
+                                <canvas id="topologyCanvas" width="550" height="220"></canvas>
                             </div>
                             <div class="charts-row">
                                 <div class="chart-box">
                                     <h4>Protocol Distribution</h4>
-                                    <div class="protocol-bar-chart" id="protocolChart">
-                                        <!-- Rendered Dynamically -->
-                                    </div>
+                                    <div class="protocol-bar-chart" id="protocolChart"></div>
                                 </div>
                                 <div class="chart-box">
                                     <h4>Application Categories</h4>
-                                    <div class="app-bar-chart" id="appChart">
-                                        <!-- Rendered Dynamically -->
-                                    </div>
+                                    <div class="app-bar-chart" id="appChart"></div>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- ROW 3: DETAILED FLOW TABLE -->
+                <!-- DPI FIREWALL ENGINE -->
+                <div class="dpi-card" id="dpiCard">
+                    <h3><i class="fa-solid fa-shield-halved"></i> C++ DPI Firewall Engine</h3>
+                    <p class="section-desc">Define blocking rules and run the compiled DPI engine to filter traffic from your capture.</p>
+                    <div class="dpi-rule-builder">
+                        <select id="dpiRuleType">
+                            <option value="--block-ip">Block IP</option>
+                            <option value="--block-app">Block App</option>
+                            <option value="--block-domain">Block Domain</option>
+                        </select>
+                        <input type="text" id="dpiRuleValue" placeholder="e.g. 192.168.1.50 or YouTube" />
+                        <button class="btn-secondary" id="dpiAddRuleBtn"><i class="fa-solid fa-plus"></i> Add Rule</button>
+                    </div>
+                    <div class="dpi-rules-list" id="dpiRulesList">
+                        <!-- Rules rendered dynamically -->
+                    </div>
+                    <div class="dpi-results" id="dpiResults">
+                        <!-- Results rendered dynamically -->
+                    </div>
+                    <div class="dpi-actions">
+                        <button class="btn-primary" id="dpiRunBtn"><i class="fa-solid fa-bolt"></i> Run DPI Engine</button>
+                        <button class="btn-secondary" id="dpiDownloadBtn" style="display: none;"><i class="fa-solid fa-download"></i> Download Filtered PCAP</button>
+                    </div>
+                </div>
+
+                <!-- DATA VIEWER (TABS) -->
                 <div class="glass-card table-card">
-                    <div class="card-header-table">
-                        <h3><i class="fa-solid fa-list"></i> Reconstructed Flow Conversations</h3>
-                        <div class="table-actions">
-                            <button id="exportCsvBtn" class="btn-secondary btn-small" title="Export to CSV"><i class="fa-solid fa-file-csv"></i> Export CSV</button>
+                    <div class="tabs-header" style="display: flex; justify-content: space-between; align-items: center; padding: 16px; border-bottom: 1px solid #2a2d3e;">
+                        <div class="tabs-nav" style="display: flex; gap: 8px;">
+                            <button class="btn-secondary tab-btn active" id="btnTabFlows" style="background: rgba(30,215,96,0.1); border-color: var(--primary);"><i class="fa-solid fa-list"></i> Reconstructed Flows</button>
+                            <button class="btn-secondary tab-btn" id="btnTabGeo"><i class="fa-solid fa-earth-americas"></i> Top Talkers & GeoIP</button>
+                        </div>
+                        <div class="table-actions" style="display: flex; gap: 12px; align-items: center;">
+                            <button id="exportCsvBtn" class="btn-secondary btn-small" title="Export to CSV"><i class="fa-solid fa-file-csv"></i> Export</button>
                             <div class="table-search">
                                 <i class="fa-solid fa-magnifying-glass"></i>
                                 <input type="text" id="flowSearch" placeholder="Search IP, Port, Category..." />
                             </div>
                         </div>
                     </div>
-                    <!-- Quick-Filter Pills -->
-                    <div class="table-filters" id="tableFilters">
-                        <button class="filter-pill active" data-filter="all">All Connections</button>
-                        <button class="filter-pill" data-filter="TCP">TCP Only</button>
-                        <button class="filter-pill" data-filter="UDP">UDP Only</button>
-                        <button class="filter-pill" data-filter="DNS">DNS Queries</button>
-                        <button class="filter-pill" data-filter="threat">Warnings / Threats</button>
+                    
+                    <!-- TAB 1: FLOWS -->
+                    <div id="tabFlows">
+                        <div class="table-filters" id="tableFilters">
+                            <button class="filter-pill active" data-filter="all">All</button>
+                            <button class="filter-pill" data-filter="TCP">TCP</button>
+                            <button class="filter-pill" data-filter="UDP">UDP</button>
+                            <button class="filter-pill" data-filter="DNS">DNS</button>
+                            <button class="filter-pill" data-filter="threat">Threats</button>
+                        </div>
+                        <div class="table-responsive">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Source</th>
+                                        <th>Destination</th>
+                                        <th>Proto</th>
+                                        <th>Port</th>
+                                        <th>Category</th>
+                                        <th>Domain</th>
+                                        <th>Size</th>
+                                        <th>Pkts</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="flowTableBody"></tbody>
+                            </table>
+                        </div>
                     </div>
-                    <div class="table-responsive">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Flow ID</th>
-                                    <th>Source IP</th>
-                                    <th>Destination IP</th>
-                                    <th>Protocol</th>
-                                    <th>Dest Port</th>
-                                    <th>Category (ML Tag)</th>
-                                    <th>Associated Domain / Host</th>
-                                    <th>Total Size</th>
-                                    <th>Packets</th>
-                                    <th>Security Status</th>
-                                </tr>
-                            </thead>
-                            <tbody id="flowTableBody">
-                                <!-- Loaded dynamically -->
-                            </tbody>
-                        </table>
+
+                    <!-- TAB 2: GEOIP -->
+                    <div id="tabGeo" style="display: none;">
+                        <div class="table-responsive">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Country</th>
+                                        <th>City</th>
+                                        <th>IP Address</th>
+                                        <th>ISP / Organization</th>
+                                        <th>Flows</th>
+                                        <th>Total Data</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="geoIpTableBody">
+                                    <tr><td colspan="6" style="text-align: center; padding: 2rem; color: var(--text-muted);"><i class="fa-solid fa-spinner fa-spin"></i> Gathering geographical data...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </div>
         </main>
 
-        <!-- FLOATING CHAT WIDGET -->
+        <!-- CHAT WIDGET -->
         <div class="chat-widget" id="chatWidget" style="display: none;">
             <div class="chat-header" id="chatHeader">
                 <div class="chat-title">
                     <i class="fa-solid fa-comments"></i>
                     <div>
-                        <h4>AI Packet Assistant</h4>
-                        <span>Streaming Online</span>
+                        <h4>Packet Assistant</h4>
+                        <span>Online</span>
                     </div>
                 </div>
                 <div class="chat-actions">
@@ -234,25 +269,23 @@
             <div class="chat-body" id="chatBody">
                 <div class="chat-message bot">
                     <div class="message-bubble">
-                        Hello! I am your AI Packet Assistant. Ask me anything about this packet trace.
+                        Ask me anything about this packet trace — I'll explain it in plain English.
                     </div>
                 </div>
             </div>
             
-            <!-- Quick Suggestion Chips -->
             <div class="chat-suggestions" id="chatSuggestions">
                 <button class="chip">What is DNS?</button>
-                <button class="chip">Is this scan normal?</button>
-                <button class="chip">Generate C++ rules</button>
+                <button class="chip">Is this traffic normal?</button>
+                <button class="chip">Generate DPI rules</button>
             </div>
             
             <div class="chat-input-area">
-                <input type="text" id="chatInput" placeholder="Ask about ports, protocols, or safety..." />
+                <input type="text" id="chatInput" placeholder="Ask about ports, protocols, threats..." />
                 <button id="sendChatBtn"><i class="fa-solid fa-paper-plane"></i></button>
             </div>
         </div>
 
-        <!-- CHAT TRIGGER BUTTON (When Minimized) -->
         <button class="chat-trigger" id="chatTrigger" style="display: none;">
             <i class="fa-solid fa-comments"></i>
             <span class="badge" id="chatBadge" style="display: none;">1</span>
@@ -260,64 +293,63 @@
 
     </div>
 
-    <!-- TOAST NOTIFICATIONS CONTAINER -->
+    <!-- TOASTS -->
     <div class="toast-container" id="toastContainer"></div>
 
-    <!-- ONBOARDING MODAL -->
+    <!-- ONBOARDING -->
     <div class="onboarding-overlay" id="onboardingModal" style="display: none;">
         <div class="onboarding-card">
             <div class="onboarding-header">
-                <i class="fa-solid fa-wand-magic-sparkles onboarding-wizard-icon"></i>
-                <h2>Welcome to NetScope.ai!</h2>
-                <p>Let's get you started with intelligent network packet analysis in 3 simple steps.</p>
+                <i class="fa-solid fa-network-wired onboarding-wizard-icon"></i>
+                <h2>Welcome to NetScope</h2>
+                <p>Analyze network traffic in three simple steps.</p>
             </div>
             <div class="onboarding-steps">
                 <div class="onboarding-step">
                     <div class="step-num">1</div>
                     <div class="step-detail">
                         <h3>Upload or Pick a Demo</h3>
-                        <p>Drag and drop a <code>.pcap</code> file or click one of our beginner-friendly simulation cards on the sidebar to load ready-made traces.</p>
+                        <p>Drag a <code>.pcap</code> file or click a demo capture from the sidebar.</p>
                     </div>
                 </div>
                 <div class="onboarding-step">
                     <div class="step-num">2</div>
                     <div class="step-detail">
-                        <h3>Explore Visual & ML Splitting</h3>
-                        <p>See reconstructed network conversations, protocol split charts, and automated ML threat alerts flagging security risks.</p>
+                        <h3>Explore Traffic Data</h3>
+                        <p>View reconstructed flows, protocol charts, topology maps, and ML-flagged threats.</p>
                     </div>
                 </div>
                 <div class="onboarding-step">
                     <div class="step-num">3</div>
                     <div class="step-detail">
-                        <h3>Ask AI Questions</h3>
-                        <p>Use the <strong>AI Packet Assistant</strong> to ask questions in plain English, translate tech terms, or generate firewall blocking rules!</p>
+                        <h3>Filter & Ask AI</h3>
+                        <p>Use the DPI engine to block traffic, or ask the AI assistant to explain what's happening.</p>
                     </div>
                 </div>
             </div>
-            <button class="btn-primary onboarding-dismiss" id="onboardingDismissBtn">Start Analyzing!</button>
+            <button class="btn-primary onboarding-dismiss" id="onboardingDismissBtn">Start Analyzing</button>
         </div>
     </div>
 
-    <!-- DETAIL INSPECTOR DRAWER -->
+    <!-- INSPECTOR DRAWER -->
     <div class="inspector-drawer" id="inspectorDrawer">
         <div class="drawer-header">
             <div class="drawer-title">
                 <i class="fa-solid fa-magnifying-glass-chart"></i>
                 <div>
-                    <h3 id="drawerFlowTitle">Flow Conversation Details</h3>
-                    <span id="drawerFlowSub">Loading 5-tuple...</span>
+                    <h3 id="drawerFlowTitle">Flow Details</h3>
+                    <span id="drawerFlowSub">Loading...</span>
                 </div>
             </div>
-            <button id="closeDrawerBtn" class="close-drawer-btn" aria-label="Close Inspector"><i class="fa-solid fa-xmark"></i></button>
+            <button id="closeDrawerBtn" class="close-drawer-btn" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
         </div>
         
         <div class="drawer-tabs">
-            <button class="drawer-tab active" data-tab="flowPackets" id="tabBtnPackets">Packet List</button>
-            <button class="drawer-tab" data-tab="flowHex" id="tabBtnHex">Hex Stream Explorer</button>
+            <button class="drawer-tab active" data-tab="flowPackets" id="tabBtnPackets">Packets</button>
+            <button class="drawer-tab" data-tab="flowHex" id="tabBtnHex">Hex Viewer</button>
         </div>
         
         <div class="drawer-body">
-            <!-- TAB 1: Packet List -->
             <div class="drawer-tab-content active" id="tabFlowPackets">
                 <div class="table-responsive-drawer">
                     <table class="drawer-packet-table">
@@ -329,18 +361,15 @@
                                 <th>Info</th>
                             </tr>
                         </thead>
-                        <tbody id="drawerPacketBody">
-                            <!-- Packets loaded dynamically -->
-                        </tbody>
+                        <tbody id="drawerPacketBody"></tbody>
                     </table>
                 </div>
             </div>
             
-            <!-- TAB 2: Monospace Hex Explorer -->
             <div class="drawer-tab-content" id="tabFlowHex">
-                <p class="section-desc-drawer">Select a packet from the list tab first to inspect its raw bytes: </p>
+                <p class="section-desc-drawer">Select a packet from the Packets tab to inspect raw bytes.</p>
                 <div class="hex-viewer" id="hexViewer">
-                    <div class="hex-empty-state">No packet selected. Select a packet from the 'Packet List' tab to inspect raw bytes.</div>
+                    <div class="hex-empty-state">No packet selected.</div>
                 </div>
             </div>
         </div>
