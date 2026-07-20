@@ -81,6 +81,7 @@ struct ParsedPacket {
     uint8_t tcp_flags;
     uint32_t seq_number;
     uint32_t ack_number;
+    uint16_t window_size;
     
     // Payload
     size_t payload_length;

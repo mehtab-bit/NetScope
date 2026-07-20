@@ -11,6 +11,7 @@
 #include "packet_parser.h"
 #include "sni_extractor.h"
 #include "types.h"
+#include <cmath>
 
 using namespace PacketAnalyzer;
 using namespace DPI;
@@ -20,9 +21,18 @@ struct Flow {
     FiveTuple tuple;
     AppType app_type = AppType::UNKNOWN;
     std::string sni;
+    std::string ja3_hash;
+    std::vector<double> timestamps;
+    bool is_beaconing = false;
     uint64_t packets = 0;
     uint64_t bytes = 0;
     bool blocked = false;
+    
+    // Protocol stats
+    uint32_t retransmissions = 0;
+    uint32_t last_seq_num = 0;
+    uint16_t min_window = 65535;
+    uint16_t max_window = 0;
 };
 
 // Blocking rules
@@ -61,6 +71,26 @@ public:
             if (sni.find(dom) != std::string::npos) return true;
         }
         return false;
+    }
+    
+    void loadFromFile(const std::string& filename) {
+        std::ifstream file(filename);
+        if (!file.is_open()) return;
+        
+        std::string line;
+        while (std::getline(file, line)) {
+            if (line.empty() || line[0] == '#') continue;
+            
+            size_t space = line.find(' ');
+            if (space == std::string::npos) continue;
+            
+            std::string cmd = line.substr(0, space);
+            std::string arg = line.substr(space + 1);
+            
+            if (cmd == "BLOCK_IP") blockIP(arg);
+            else if (cmd == "BLOCK_APP") blockApp(arg);
+            else if (cmd == "BLOCK_DOMAIN") blockDomain(arg);
+        }
     }
     
 private:
@@ -112,6 +142,8 @@ int main(int argc, char* argv[]) {
             rules.blockApp(argv[++i]);
         } else if (arg == "--block-domain" && i + 1 < argc) {
             rules.blockDomain(argv[++i]);
+        } else if (arg == "--config" && i + 1 < argc) {
+            rules.loadFromFile(argv[++i]);
         }
     }
     
@@ -183,9 +215,23 @@ int main(int argc, char* argv[]) {
         flow.packets++;
         flow.bytes += raw.data.size();
         
+        double ts = raw.header.ts_sec + (raw.header.ts_usec / 1000000.0);
+        flow.timestamps.push_back(ts);
+        
+        if (parsed.has_tcp) {
+            if (parsed.window_size < flow.min_window) flow.min_window = parsed.window_size;
+            if (parsed.window_size > flow.max_window) flow.max_window = parsed.window_size;
+            
+            if (parsed.seq_number == flow.last_seq_num && raw.data.size() > 54) {
+                // Heuristic for retransmission (same seq num with payload)
+                flow.retransmissions++;
+            }
+            flow.last_seq_num = parsed.seq_number;
+        }
+        
         // Try SNI extraction - even for flows already marked as generic HTTPS
         if ((flow.app_type == AppType::UNKNOWN || flow.app_type == AppType::HTTPS) && 
-            flow.sni.empty() && parsed.has_tcp && parsed.dest_port == 443) {
+            parsed.has_tcp && parsed.dest_port == 443) {
             
             size_t payload_offset = 14;
             uint8_t ip_ihl = raw.data[14] & 0x0F;
@@ -198,10 +244,18 @@ int main(int argc, char* argv[]) {
                 if (payload_offset < raw.data.size()) {
                     size_t payload_len = raw.data.size() - payload_offset;
                     if (payload_len > 5) {  // Minimum TLS record header
-                        auto sni = SNIExtractor::extract(raw.data.data() + payload_offset, payload_len);
-                        if (sni) {
-                            flow.sni = *sni;
-                            flow.app_type = sniToAppType(*sni);
+                        if (flow.sni.empty()) {
+                            auto sni = SNIExtractor::extract(raw.data.data() + payload_offset, payload_len);
+                            if (sni) {
+                                flow.sni = *sni;
+                                flow.app_type = sniToAppType(*sni);
+                            }
+                        }
+                        if (flow.ja3_hash.empty()) {
+                            auto ja3 = SNIExtractor::extractJA3(raw.data.data() + payload_offset, payload_len);
+                            if (ja3) {
+                                flow.ja3_hash = *ja3;
+                            }
                         }
                     }
                 }
@@ -230,11 +284,26 @@ int main(int argc, char* argv[]) {
                 }
             }
         }
-        
-        // DNS classification
-        if (flow.app_type == AppType::UNKNOWN && 
-            (parsed.dest_port == 53 || parsed.src_port == 53)) {
+        // DNS classification and extraction
+        if ((flow.app_type == AppType::UNKNOWN || flow.app_type == AppType::DNS) && 
+            parsed.has_udp && (parsed.dest_port == 53 || parsed.src_port == 53)) {
+            
             flow.app_type = AppType::DNS;
+            
+            if (flow.sni.empty() && parsed.dest_port == 53) {
+                size_t payload_offset = 14;
+                uint8_t ip_ihl = raw.data[14] & 0x0F;
+                payload_offset += ip_ihl * 4;
+                payload_offset += 8; // UDP Header
+                
+                if (payload_offset < raw.data.size()) {
+                    size_t payload_len = raw.data.size() - payload_offset;
+                    auto domain = DNSExtractor::extractQuery(raw.data.data() + payload_offset, payload_len);
+                    if (domain) {
+                        flow.sni = *domain;
+                    }
+                }
+            }
         }
         
         // Port-based fallback
@@ -275,6 +344,41 @@ int main(int argc, char* argv[]) {
     
     reader.close();
     output.close();
+    
+    // Calculate Beaconing and format JA3
+    std::cout << "\n[Flow Analysis]\n";
+    for (auto& [tuple, flow] : flows) {
+        if (flow.timestamps.size() >= 10) {
+            // Calculate differences
+            std::vector<double> diffs;
+            for (size_t i = 1; i < flow.timestamps.size(); i++) {
+                diffs.push_back(flow.timestamps[i] - flow.timestamps[i-1]);
+            }
+            
+            // Mean
+            double sum = 0;
+            for (double d : diffs) sum += d;
+            double mean = sum / diffs.size();
+            
+            // Variance
+            double sq_sum = 0;
+            for (double d : diffs) sq_sum += (d - mean) * (d - mean);
+            double stddev = std::sqrt(sq_sum / diffs.size());
+            
+            // If stddev is very low (e.g., < 0.1s variance) and mean > 1.0s, flag as beaconing
+            // For a demo, we will use a more generous threshold: stddev < 0.5
+            if (stddev < 0.5 && mean > 0.1) {
+                flow.is_beaconing = true;
+            }
+        }
+        
+        if (flow.is_beaconing) {
+            std::cout << "[Beaconing] " << tuple.src_ip << " -> " << tuple.dst_ip << " (" << flow.sni << ")\n";
+        }
+        if (!flow.ja3_hash.empty()) {
+            std::cout << "[JA3] " << tuple.src_ip << " -> " << tuple.dst_ip << " : " << flow.ja3_hash << "\n";
+        }
+    }
     
     // Print report
     std::cout << "\n";

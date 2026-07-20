@@ -1,6 +1,7 @@
 document.addEventListener("DOMContentLoaded", () => {
     // State management
     let activeFlows = [];
+    let activeGeoIpData = [];
     let chatHistory = [];
     let searchTimeout = null;
     let topologyAnimationId = null;
@@ -11,6 +12,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const hamburgerBtn = document.getElementById("hamburgerBtn");
     const closeSidebarBtn = document.getElementById("closeSidebarBtn");
     const newAnalysisBtn = document.getElementById("newAnalysisBtn");
+    const exportReportBtn = document.getElementById("exportReportBtn");
     const exportCsvBtn = document.getElementById("exportCsvBtn");
     const onboardingModal = document.getElementById("onboardingModal");
     const onboardingDismissBtn = document.getElementById("onboardingDismissBtn");
@@ -28,10 +30,10 @@ document.addEventListener("DOMContentLoaded", () => {
     const metricPackets = document.getElementById("metricPackets");
     const metricFlows = document.getElementById("metricFlows");
     const metricVolume = document.getElementById("metricVolume");
-    const metricThreats = document.getElementById("metricThreats");
+    const metricThreats = document.getElementById("metricMalicious");
     const threatCard = document.getElementById("threatCard");
     const threatIcon = document.getElementById("threatIcon");
-    const threatLabel = document.getElementById("threatLabel");
+    const threatLabel = null; // No longer present in index.html
     
     // Dashboard Core Panels
     const insightContent = document.getElementById("insightContent");
@@ -125,14 +127,23 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
-    // Reset View Trigger
     newAnalysisBtn.addEventListener("click", () => {
         resetToUploadView();
     });
 
+    if (exportReportBtn) {
+        exportReportBtn.addEventListener("click", () => {
+            window.open("/api/export-report", "_blank");
+        });
+    }
+
     // CSV Export trigger
     exportCsvBtn.addEventListener("click", () => {
-        exportFlowsToCsv();
+        if (tabGeo && tabGeo.style.display === "block") {
+            exportGeoIpToCsv();
+        } else {
+            exportFlowsToCsv();
+        }
     });
 
     // Debounced Filtering Table
@@ -160,10 +171,21 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     // Chat Window controls
-    minimizeChatBtn.addEventListener("click", () => {
-        chatWidget.style.display = "none";
-        chatTrigger.style.display = "flex";
-    });
+    const chatHeader = document.getElementById("chatHeader");
+    if (chatHeader) {
+        chatHeader.addEventListener("click", () => {
+            chatWidget.style.display = "none";
+            chatTrigger.style.display = "flex";
+        });
+    }
+
+    if (minimizeChatBtn) {
+        minimizeChatBtn.addEventListener("click", (e) => {
+            e.stopPropagation(); // Prevent duplicate trigger from chatHeader
+            chatWidget.style.display = "none";
+            chatTrigger.style.display = "flex";
+        });
+    }
 
     chatTrigger.addEventListener("click", () => {
         chatWidget.style.display = "flex";
@@ -280,7 +302,7 @@ document.addEventListener("DOMContentLoaded", () => {
         loadingOverlay.style.display = "none";
     }
 
-    function renderDashboard(data) {
+    function renderDashboard(data, skipGemini = false) {
         hideLoading();
         
         // Update file indicator
@@ -292,6 +314,7 @@ document.addEventListener("DOMContentLoaded", () => {
         chatWidget.style.display = "flex";
         chatTrigger.style.display = "none";
         newAnalysisBtn.style.display = "block";
+        if (exportReportBtn) exportReportBtn.style.display = "block";
 
         activeFlows = data.flows;
         chatHistory = [];
@@ -312,10 +335,12 @@ document.addEventListener("DOMContentLoaded", () => {
         // Volume calculation
         let bytes = 0;
         data.flows.forEach(f => bytes += f.byte_count);
-        if (bytes > 1024 * 1024) {
-            metricVolume.textContent = `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
-        } else {
-            metricVolume.textContent = `${(bytes / 1024).toFixed(1)} KB`;
+        if (metricVolume) {
+            if (bytes > 1024 * 1024) {
+                metricVolume.textContent = `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+            } else {
+                metricVolume.textContent = `${(bytes / 1024).toFixed(1)} KB`;
+            }
         }
 
         // Threats calculation
@@ -324,19 +349,30 @@ document.addEventListener("DOMContentLoaded", () => {
             if (f.anomalies && f.anomalies.length > 0) threatCount++;
         });
         
-        metricThreats.textContent = threatCount;
-        if (threatCount > 0) {
-            threatIcon.className = "metric-icon bg-red";
-            threatIcon.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i>';
-            threatLabel.textContent = "Warnings";
-        } else {
-            threatIcon.className = "metric-icon bg-green";
-            threatIcon.innerHTML = '<i class="fa-solid fa-shield-halved"></i>';
+        if (metricThreats) {
+            metricThreats.textContent = threatCount;
+        }
+        if (threatIcon) {
+            if (threatCount > 0) {
+                threatIcon.className = "metric-icon bg-red";
+                threatIcon.innerHTML = '<i class="fa-solid fa-shield-virus"></i>';
+            } else {
+                threatIcon.className = "metric-icon bg-green";
+                threatIcon.innerHTML = '<i class="fa-solid fa-shield-halved"></i>';
+            }
+        }
+        if (threatLabel) {
             threatLabel.textContent = "Threats";
         }
 
         // Render charts
         renderCharts(data.flows);
+
+        // Render bandwidth timeline line chart
+        renderBandwidthTimeline(data.packets);
+        
+        // Render packets drill down modal table
+        renderPacketTable(data.packets);
 
         // Initialize Topology Canvas Map
         initTopology(data.flows);
@@ -348,11 +384,28 @@ document.addEventListener("DOMContentLoaded", () => {
         setupScrollAnimations();
 
         // Call AI for analysis report
-        insightContent.innerHTML = '<p><i class="fa-solid fa-spinner fa-spin"></i> Generating analysis...</p>';
-        runGeminiAnalysis(data.flows);
+        if (!skipGemini) {
+            insightContent.innerHTML = '<p><i class="fa-solid fa-spinner fa-spin"></i> Generating analysis...</p>';
+            runGeminiAnalysis(data.flows);
+        } else {
+            insightContent.innerHTML = `
+                <div class="ai-stale-notice" style="padding: 1.25rem; border: 1px dashed var(--border-card); border-radius: var(--radius-lg); text-align: center; background: rgba(245,158,11,0.04); margin-bottom: 1rem;">
+                    <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 8px;"><i class="fa-solid fa-circle-info" style="color: #f59e0b; margin-right: 6px;"></i> View updated dashboard metrics above. AI Analysis is still based on the original capture.</p>
+                    <button class="btn-secondary btn-small" id="regenerateInsightBtnFiltered"><i class="fa-solid fa-rotate-right"></i> Run AI Analysis on Filtered Capture</button>
+                </div>
+            `;
+            const filterRegenBtn = document.getElementById("regenerateInsightBtnFiltered");
+            if (filterRegenBtn) {
+                filterRegenBtn.addEventListener("click", () => {
+                    insightContent.innerHTML = '<p><i class="fa-solid fa-spinner fa-spin"></i> Generating analysis...</p>';
+                    runGeminiAnalysis(data.flows);
+                });
+            }
+        }
     }
 
     function animateCounter(element, target) {
+        if (!element) return;
         let current = 0;
         const duration = 1000; // 1s animation
         const stepTime = Math.abs(Math.floor(duration / target));
@@ -477,6 +530,7 @@ document.addEventListener("DOMContentLoaded", () => {
         });
 
         const externalIPs = Object.values(externalIPMap).slice(0, 6);
+        const maxBytes = Math.max(...externalIPs.map(f => f.byte_count), 1);
         
         externalIPs.forEach((flow, index) => {
             const angle = (index / externalIPs.length) * Math.PI * 2;
@@ -492,6 +546,7 @@ document.addEventListener("DOMContentLoaded", () => {
             }
 
             const label = flow.app_category !== "UNKNOWN" ? flow.app_category : flow.domain || flow.dst_ip;
+            const size = 5 + (flow.byte_count / maxBytes) * 10; // Sizes between 5px and 15px
 
             const node = {
                 id: `node_${index}`,
@@ -499,7 +554,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 ip: flow.dst_ip === "192.168.1.100" ? flow.src_ip : flow.dst_ip,
                 x: x,
                 y: y,
-                size: 7,
+                size: size,
                 color: color,
                 isCenter: false
             };
@@ -512,14 +567,15 @@ document.addEventListener("DOMContentLoaded", () => {
             });
 
             // Particles flowing along links
-            const pCount = Math.min(Math.max(Math.floor(flow.packet_count / 10), 1), 5);
+            const pCount = Math.min(Math.max(Math.floor(flow.packet_count / 10), 1), 6);
             for (let i = 0; i < pCount; i++) {
+                const speed = 0.002 + (flow.packet_count / 1000) * 0.01 + Math.random() * 0.003;
                 topologyParticles.push({
                     source: centerNode,
                     target: node,
                     progress: Math.random(),
-                    speed: 0.003 + Math.random() * 0.008,
-                    size: 2 + Math.random() * 2,
+                    speed: Math.min(Math.max(speed, 0.002), 0.015), // Bound speed
+                    size: 1.5 + Math.random() * 2,
                     color: color
                 });
             }
@@ -531,12 +587,17 @@ document.addEventListener("DOMContentLoaded", () => {
     function animateTopology(canvas, ctx) {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+        const isLight = document.body.classList.contains("light-theme");
+        const linkColor = isLight ? "rgba(0, 0, 0, 0.08)" : "rgba(255, 255, 255, 0.08)";
+        const nodeStrokeColor = isLight ? "rgba(0, 0, 0, 0.15)" : "rgba(255, 255, 255, 0.2)";
+        const labelColor = isLight ? "#475569" : "#a0aec0";
+
         // Draw Links
         topologyLinks.forEach(link => {
             ctx.beginPath();
             ctx.moveTo(link.source.x, link.source.y);
             ctx.lineTo(link.target.x, link.target.y);
-            ctx.strokeStyle = link.color;
+            ctx.strokeStyle = linkColor;
             ctx.lineWidth = 1;
             ctx.stroke();
         });
@@ -563,7 +624,7 @@ document.addEventListener("DOMContentLoaded", () => {
             if (node.isCenter) {
                 ctx.beginPath();
                 ctx.arc(node.x, node.y, node.size + 4, 0, Math.PI * 2);
-                ctx.fillStyle = "rgba(34, 211, 238, 0.08)";
+                ctx.fillStyle = isLight ? "rgba(2, 132, 199, 0.08)" : "rgba(34, 211, 238, 0.08)";
                 ctx.fill();
             }
 
@@ -572,12 +633,12 @@ document.addEventListener("DOMContentLoaded", () => {
             ctx.fillStyle = node.color;
             ctx.fill();
             ctx.lineWidth = 1;
-            ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
+            ctx.strokeStyle = nodeStrokeColor;
             ctx.stroke();
 
             // Label text
             ctx.font = "10px Outfit, sans-serif";
-            ctx.fillStyle = "#a0aec0";
+            ctx.fillStyle = labelColor;
             ctx.textAlign = "center";
             ctx.fillText(node.label, node.x, node.y + node.size + 11);
         });
@@ -805,6 +866,14 @@ document.addEventListener("DOMContentLoaded", () => {
                     }
                 }
             }
+            
+            if (fullText) {
+                fetch("/api/save-explanation", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ explanation: fullText })
+                }).catch(err => console.error("Error saving explanation:", err));
+            }
         } catch (e) {
             insightContent.innerHTML = `<p class="error-msg">⚠️ AI Analysis failed: ${e.message}. Please check your connection or key status.</p>`;
         }
@@ -911,10 +980,13 @@ document.addEventListener("DOMContentLoaded", () => {
         chatWidget.style.display = "none";
         chatTrigger.style.display = "none";
         newAnalysisBtn.style.display = "none";
+        if (exportReportBtn) exportReportBtn.style.display = "none";
         uploadArea.style.display = "flex";
         activeFileIndicator.innerHTML = '<span class="pulse"></span> Ready';
         activeFlows = [];
+        activeGeoIpData = [];
         chatHistory = [];
+        if (tabGeo) delete tabGeo.dataset.loaded;
         pcapFileInput.value = "";
         showToast("Reset view. Ready to analyze new packet captures.", "success");
     }
@@ -942,6 +1014,27 @@ document.addEventListener("DOMContentLoaded", () => {
         link.click();
         document.body.removeChild(link);
         showToast("Flows exported as CSV successfully!", "success");
+    }
+
+    function exportGeoIpToCsv() {
+        if (activeGeoIpData.length === 0) {
+            showToast("No GeoIP data to export", "error");
+            return;
+        }
+        let csv = "Country,City,IP Address,ISP,Flows Count,Total Volume (Bytes)\n";
+        activeGeoIpData.forEach(t => {
+            csv += `"${t.country}","${t.city}",${t.ip},"${t.isp}",${t.stats.flows},${t.stats.bytes}\n`;
+        });
+        const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", `netscope_geoip_${Date.now()}.csv`);
+        link.style.visibility = "hidden";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        showToast("GeoIP data exported as CSV successfully!", "success");
     }
 
     function setupScrollAnimations() {
@@ -1013,6 +1106,76 @@ document.addEventListener("DOMContentLoaded", () => {
     const dpiRunBtn = document.getElementById("dpiRunBtn");
     const dpiDownloadBtn = document.getElementById("dpiDownloadBtn");
     const dpiResults = document.getElementById("dpiResults");
+    const dpiPresetSelect = document.getElementById("dpiPresetSelect");
+    const dpiSavePresetBtn = document.getElementById("dpiSavePresetBtn");
+
+    const SYSTEM_PRESETS = {
+        preset_block_ads: [
+            { type: "--block-domain", value: "doubleclick.net" },
+            { type: "--block-domain", value: "google-analytics.com" },
+            { type: "--block-domain", value: "adsystem.com" }
+        ],
+        preset_block_social: [
+            { type: "--block-domain", value: "facebook.com" },
+            { type: "--block-domain", value: "twitter.com" },
+            { type: "--block-domain", value: "instagram.com" },
+            { type: "--block-domain", value: "tiktok.com" }
+        ]
+    };
+
+    function loadCustomPresets() {
+        if (!dpiPresetSelect) return;
+        dpiPresetSelect.innerHTML = `
+            <option value="">-- Load Saved Preset --</option>
+            <option value="preset_block_ads">Block Ads & Trackers (Preset)</option>
+            <option value="preset_block_social">Block Social Media (Preset)</option>
+        `;
+        const custom = JSON.parse(localStorage.getItem("dpi_custom_presets") || "{}");
+        Object.keys(custom).forEach(name => {
+            const opt = document.createElement("option");
+            opt.value = "custom_" + name;
+            opt.textContent = name + " (Custom)";
+            dpiPresetSelect.appendChild(opt);
+        });
+    }
+
+    if (dpiPresetSelect) {
+        loadCustomPresets();
+        dpiPresetSelect.addEventListener("change", (e) => {
+            const val = e.target.value;
+            if (!val) return;
+            if (SYSTEM_PRESETS[val]) {
+                dpiRules = [...SYSTEM_PRESETS[val]];
+            } else if (val.startsWith("custom_")) {
+                const name = val.substring(7);
+                const custom = JSON.parse(localStorage.getItem("dpi_custom_presets") || "{}");
+                if (custom[name]) {
+                    dpiRules = [...custom[name]];
+                }
+            }
+            renderDpiRules();
+            showToast("Preset loaded successfully!", "success");
+            dpiPresetSelect.value = "";
+        });
+    }
+
+    if (dpiSavePresetBtn) {
+        dpiSavePresetBtn.addEventListener("click", () => {
+            if (dpiRules.length === 0) {
+                showToast("Add rules before saving a preset.", "error");
+                return;
+            }
+            const name = prompt("Enter a name for your custom rule preset:");
+            if (!name) return;
+            const cleanedName = name.trim();
+            if (!cleanedName) return;
+            const custom = JSON.parse(localStorage.getItem("dpi_custom_presets") || "{}");
+            custom[cleanedName] = dpiRules;
+            localStorage.setItem("dpi_custom_presets", JSON.stringify(custom));
+            loadCustomPresets();
+            showToast(`Preset "${cleanedName}" saved locally!`, "success");
+        });
+    }
 
     if (dpiAddRuleBtn) {
         dpiAddRuleBtn.addEventListener("click", () => {
@@ -1054,6 +1217,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
                 const data = await res.json();
                 renderDpiResults(data);
+                renderDashboard(data, true); // Update dynamic stats with skip AI flag
                 showToast("DPI engine completed successfully!", "success");
             } catch (e) {
                 showToast(`DPI Error: ${e.message}`, "error");
@@ -1207,6 +1371,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 };
             }).sort((a, b) => b.stats.bytes - a.stats.bytes);
             
+            activeGeoIpData = topTalkers;
             geoIpTableBody.innerHTML = "";
             topTalkers.forEach(t => {
                 const tr = document.createElement("tr");
@@ -1229,6 +1394,205 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
     
+    // Theme Toggle Logic
+    const themeToggleBtn = document.getElementById("themeToggleBtn");
+    if (themeToggleBtn) {
+        // Load saved theme
+        const savedTheme = localStorage.getItem("theme") || "dark";
+        if (savedTheme === "light") {
+            document.body.classList.add("light-theme");
+            themeToggleBtn.innerHTML = '<i class="fa-solid fa-sun"></i>';
+        } else {
+            document.body.classList.remove("light-theme");
+            themeToggleBtn.innerHTML = '<i class="fa-solid fa-moon"></i>';
+        }
+
+        themeToggleBtn.addEventListener("click", () => {
+            const isLight = document.body.classList.toggle("light-theme");
+            if (isLight) {
+                localStorage.setItem("theme", "light");
+                themeToggleBtn.innerHTML = '<i class="fa-solid fa-sun"></i>';
+            } else {
+                localStorage.setItem("theme", "dark");
+                themeToggleBtn.innerHTML = '<i class="fa-solid fa-moon"></i>';
+            }
+            // Update line chart colors
+            updateChartsTheme();
+        });
+    }
+
+    let bandwidthChartInstance = null;
+
+    function renderBandwidthTimeline(packets) {
+        if (!packets || packets.length === 0) return;
+
+        // Group packets by second
+        const timeMap = {};
+        let minTime = Infinity;
+        let maxTime = -Infinity;
+
+        packets.forEach(p => {
+            const sec = Math.floor(p.timestamp);
+            if (sec < minTime) minTime = sec;
+            if (sec > maxTime) maxTime = sec;
+            timeMap[sec] = (timeMap[sec] || 0) + p.length;
+        });
+
+        const labels = [];
+        const data = [];
+        
+        if (maxTime === minTime) {
+            maxTime += 1;
+        }
+
+        for (let t = minTime; t <= maxTime; t++) {
+            const date = new Date(t * 1000);
+            const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            labels.push(timeStr);
+            // Convert to KB
+            data.push(Math.round((timeMap[t] || 0) / 102.4) / 10.0); // KB/s
+        }
+
+        const ctx = document.getElementById("bandwidthChart").getContext("2d");
+        
+        if (bandwidthChartInstance) {
+            bandwidthChartInstance.destroy();
+        }
+
+        const isLight = document.body.classList.contains("light-theme");
+        const gridColor = isLight ? "#e2e8f0" : "#1e293b";
+        const textColor = isLight ? "#64748b" : "#94a3b8";
+        const borderColor = isLight ? "#0284c7" : "#22d3ee";
+        const gradientBg = ctx.createLinearGradient(0, 0, 0, 200);
+        gradientBg.addColorStop(0, isLight ? "rgba(2, 132, 199, 0.15)" : "rgba(34, 211, 238, 0.15)");
+        gradientBg.addColorStop(1, "rgba(34, 211, 238, 0)");
+
+        bandwidthChartInstance = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Bandwidth (KB/s)',
+                    data: data,
+                    borderColor: borderColor,
+                    backgroundColor: gradientBg,
+                    fill: true,
+                    tension: 0.3,
+                    borderWidth: 2,
+                    pointRadius: labels.length > 50 ? 0 : 3,
+                    pointHoverRadius: 5
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: {
+                            color: gridColor,
+                            drawBorder: false
+                        },
+                        ticks: {
+                            color: textColor,
+                            maxTicksLimit: 8
+                        }
+                    },
+                    y: {
+                        grid: {
+                            color: gridColor,
+                            drawBorder: false
+                        },
+                        ticks: {
+                            color: textColor,
+                            callback: function(value) {
+                                return value + ' KB/s';
+                            }
+                        },
+                        suggestedMin: 0
+                    }
+                }
+            }
+        });
+    }
+
+    function updateChartsTheme() {
+        if (!bandwidthChartInstance) return;
+        const isLight = document.body.classList.contains("light-theme");
+        const gridColor = isLight ? "#e2e8f0" : "#1e293b";
+        const textColor = isLight ? "#64748b" : "#94a3b8";
+        const borderColor = isLight ? "#0284c7" : "#22d3ee";
+        
+        const ctx = document.getElementById("bandwidthChart").getContext("2d");
+        const gradientBg = ctx.createLinearGradient(0, 0, 0, 200);
+        gradientBg.addColorStop(0, isLight ? "rgba(2, 132, 199, 0.15)" : "rgba(34, 211, 238, 0.15)");
+        gradientBg.addColorStop(1, "rgba(34, 211, 238, 0)");
+
+        bandwidthChartInstance.data.datasets[0].borderColor = borderColor;
+        bandwidthChartInstance.data.datasets[0].backgroundColor = gradientBg;
+        bandwidthChartInstance.options.scales.x.grid.color = gridColor;
+        bandwidthChartInstance.options.scales.x.ticks.color = textColor;
+        bandwidthChartInstance.options.scales.y.grid.color = gridColor;
+        bandwidthChartInstance.options.scales.y.ticks.color = textColor;
+        bandwidthChartInstance.update();
+    }
+
+    function renderPacketTable(packets) {
+        const modal = document.getElementById("packetModalOverlay");
+        const tbody = document.getElementById("packetTableBody");
+        const closeBtn = document.getElementById("closePacketModal");
+        const viewBtn = document.getElementById("viewPacketTableBtn");
+
+        if (!modal || !tbody) return;
+
+        tbody.innerHTML = "";
+        if (!packets || packets.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted);">No packet data available.</td></tr>';
+            return;
+        }
+
+        packets.forEach(p => {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+                <td>${p.timestamp.toFixed(6)}</td>
+                <td><code>${p.src_ip}${p.src_port ? ':' + p.src_port : ''}</code></td>
+                <td><code>${p.dst_ip}${p.dst_port ? ':' + p.dst_port : ''}</code></td>
+                <td><span class="proto-badge badge-${p.protocol.toLowerCase()}">${p.protocol}</span></td>
+                <td>${p.length} B</td>
+                <td class="info-cell" title="${p.tcp_flags || ''}">${p.tcp_flags ? '[' + p.tcp_flags + ']' : ''} ${p.sni || p.http_host || p.dns_query || ''}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        if (viewBtn) {
+            const newBtn = viewBtn.cloneNode(true);
+            viewBtn.parentNode.replaceChild(newBtn, viewBtn);
+            newBtn.addEventListener("click", () => {
+                modal.style.display = "flex";
+            });
+        }
+
+        if (closeBtn) {
+            closeBtn.addEventListener("click", () => {
+                modal.style.display = "none";
+            });
+        }
+
+        modal.addEventListener("click", (e) => {
+            if (e.target === modal) {
+                modal.style.display = "none";
+            }
+        });
+    }
+
     // Reset GeoIP loaded state when new file uploaded
     const originalRenderTable = window.renderFlowTable;
     // Note: renderFlowTable is actually not globally exposed. We must hook into the analysis render logic.

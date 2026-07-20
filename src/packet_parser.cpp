@@ -156,6 +156,9 @@ bool PacketParser::parseTCP(const uint8_t* data, size_t len,
     // Flags (byte 13)
     parsed.tcp_flags = tcp_data[13];
     
+    // Window size (bytes 14-15)
+    parsed.window_size = ntohs(*reinterpret_cast<const uint16_t*>(tcp_data + 14));
+    
     if (tcp_header_len < MIN_TCP_HEADER_LEN || len < offset + tcp_header_len) {
         return false;
     }

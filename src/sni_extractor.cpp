@@ -1,4 +1,7 @@
 #include "sni_extractor.h"
+#include "md5.h"
+#include <iostream>
+#include <iomanip>
 #include <cstring>
 #include <algorithm>
 
@@ -124,6 +127,108 @@ std::optional<std::string> SNIExtractor::extract(const uint8_t* payload, size_t 
     }
     
     return std::nullopt;
+}
+
+std::optional<std::string> SNIExtractor::extractJA3(const uint8_t* payload, size_t length) {
+    if (!isTLSClientHello(payload, length)) return std::nullopt;
+    
+    // TLS Version
+    uint16_t version = readUint16BE(payload + 9);
+    std::string ja3_str = std::to_string(version) + ",";
+    
+    size_t offset = 5; // record header
+    offset += 4; // handshake header
+    offset += 2; // client version
+    offset += 32; // random
+    
+    if (offset >= length) return std::nullopt;
+    uint8_t session_id_length = payload[offset];
+    offset += 1 + session_id_length;
+    
+    if (offset + 2 > length) return std::nullopt;
+    uint16_t cipher_suites_length = readUint16BE(payload + offset);
+    
+    std::string ciphers = "";
+    bool first = true;
+    auto isGrease = [](uint16_t val) { return (val & 0x0F0F) == 0x0A0A; };
+    
+    for (size_t i = 0; i < cipher_suites_length; i += 2) {
+        if (offset + 2 + i + 2 > length) break;
+        uint16_t cipher = readUint16BE(payload + offset + 2 + i);
+        if (!isGrease(cipher)) {
+            if (!first) ciphers += "-";
+            ciphers += std::to_string(cipher);
+            first = false;
+        }
+    }
+    ja3_str += ciphers + ",";
+    offset += 2 + cipher_suites_length;
+    
+    if (offset >= length) return std::nullopt;
+    uint8_t compression_methods_length = payload[offset];
+    offset += 1 + compression_methods_length;
+    
+    std::string extensions = "";
+    std::string elliptic_curves = "";
+    std::string ec_point_formats = "";
+    
+    if (offset + 2 <= length) {
+        uint16_t extensions_length = readUint16BE(payload + offset);
+        offset += 2;
+        
+        size_t extensions_end = offset + extensions_length;
+        if (extensions_end > length) extensions_end = length;
+        
+        first = true;
+        while (offset + 4 <= extensions_end) {
+            uint16_t ext_type = readUint16BE(payload + offset);
+            uint16_t ext_length = readUint16BE(payload + offset + 2);
+            offset += 4;
+            
+            if (offset + ext_length > extensions_end) break;
+            
+            if (!isGrease(ext_type)) {
+                if (!first) extensions += "-";
+                extensions += std::to_string(ext_type);
+                first = false;
+            }
+            
+            if (ext_type == 10) { 
+                if (ext_length >= 2) {
+                    uint16_t groups_len = readUint16BE(payload + offset);
+                    bool ec_first = true;
+                    for (size_t i = 0; i < groups_len; i += 2) {
+                        if (offset + 2 + i + 2 > offset + ext_length) break;
+                        uint16_t curve = readUint16BE(payload + offset + 2 + i);
+                        if (!isGrease(curve)) {
+                            if (!ec_first) elliptic_curves += "-";
+                            elliptic_curves += std::to_string(curve);
+                            ec_first = false;
+                        }
+                    }
+                }
+            } else if (ext_type == 11) { 
+                if (ext_length >= 1) {
+                    uint8_t formats_len = payload[offset];
+                    bool ec_pf_first = true;
+                    for (size_t i = 0; i < formats_len; i++) {
+                        if (offset + 1 + i >= offset + ext_length) break;
+                        uint8_t format = payload[offset + 1 + i];
+                        if (!ec_pf_first) ec_point_formats += "-";
+                        ec_point_formats += std::to_string(format);
+                        ec_pf_first = false;
+                    }
+                }
+            }
+            offset += ext_length;
+        }
+    }
+    
+    ja3_str += extensions + "," + elliptic_curves + "," + ec_point_formats;
+    
+    // Hash using MD5
+    ::MD5 md5;
+    return md5(ja3_str);
 }
 
 std::vector<std::pair<uint16_t, std::string>> SNIExtractor::extractExtensions(

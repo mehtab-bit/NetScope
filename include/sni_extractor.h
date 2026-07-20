@@ -49,6 +49,9 @@ public:
     // payload should point to the start of TCP payload (after TCP header)
     static std::optional<std::string> extract(const uint8_t* payload, size_t length);
     
+    // Extract JA3 Fingerprint string (needs to be MD5 hashed externally)
+    static std::optional<std::string> extractJA3(const uint8_t* payload, size_t length);
+    
     // Check if this looks like a TLS Client Hello
     static bool isTLSClientHello(const uint8_t* payload, size_t length);
     

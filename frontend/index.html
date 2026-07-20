@@ -7,8 +7,9 @@
     <title>NetScope — Network Packet Analyzer</title>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="/static/style.css">
-    <script src="/static/app.js" defer></script>
+    <link rel="stylesheet" href="/static/style.css?v=5">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="/static/app.js?v=5" defer></script>
 </head>
 <body>
     <div class="app-container">
@@ -59,6 +60,8 @@
                     </div>
                 </div>
                 <div class="header-actions">
+                    <button id="themeToggleBtn" class="btn-secondary btn-small" style="margin-right: 12px;" aria-label="Toggle Theme"><i class="fa-solid fa-moon"></i></button>
+                    <button id="exportReportBtn" class="btn-secondary btn-small" style="display: none; margin-right: 12px;" title="Export Print-ready HTML/PDF Report"><i class="fa-solid fa-file-pdf"></i> Export Report</button>
                     <button id="newAnalysisBtn" class="btn-secondary btn-small" style="display: none; margin-right: 12px;"><i class="fa-solid fa-cloud-arrow-up"></i> New Analysis</button>
                     <div class="active-file-indicator" id="activeFileIndicator">
                         <span class="pulse"></span> Ready
@@ -89,8 +92,7 @@
 
             <!-- DASHBOARD VIEW -->
             <div class="dashboard-grid" id="dashboardView" style="display: none;">
-                
-                <!-- METRICS ROW -->
+                               <!-- METRICS ROW -->
                 <div class="metrics-row">
                     <div class="metric-card">
                         <div class="metric-icon bg-blue"><i class="fa-solid fa-network-wired"></i></div>
@@ -100,29 +102,34 @@
                         </div>
                     </div>
                     <div class="metric-card">
-                        <div class="metric-icon bg-purple"><i class="fa-solid fa-arrows-spin"></i></div>
+                        <div class="metric-icon bg-purple"><i class="fa-solid fa-arrows-split-up-and-left"></i></div>
                         <div class="metric-details">
                             <span class="metric-value" id="metricFlows">0</span>
-                            <span class="metric-label">Flows</span>
-                        </div>
-                    </div>
-                    <div class="metric-card">
-                        <div class="metric-icon bg-green"><i class="fa-solid fa-chart-line"></i></div>
-                        <div class="metric-details">
-                            <span class="metric-value" id="metricVolume">0 KB</span>
-                            <span class="metric-label">Volume</span>
+                            <span class="metric-label">Active Flows</span>
                         </div>
                     </div>
                     <div class="metric-card" id="threatCard">
-                        <div class="metric-icon bg-gray" id="threatIcon"><i class="fa-solid fa-shield-halved"></i></div>
+                        <div class="metric-icon bg-red" id="threatIcon"><i class="fa-solid fa-shield-virus"></i></div>
                         <div class="metric-details">
-                            <span class="metric-value" id="metricThreats">0</span>
-                            <span class="metric-label" id="threatLabel">Threats</span>
+                            <span class="metric-value" id="metricMalicious">0</span>
+                            <span class="metric-label">Alerts / Threats</span>
                         </div>
                     </div>
                 </div>
 
-                <!-- ANALYSIS + CHARTS -->
+                <!-- BANDWIDTH CHART -->
+                <div class="chart-container box-card">
+                    <div class="box-header" style="display: flex; justify-content: space-between; align-items: center;">
+                        <h3><i class="fa-solid fa-chart-line"></i> Bandwidth Timeline</h3>
+                        <button id="viewPacketTableBtn" class="btn-secondary btn-small"><i class="fa-solid fa-table"></i> View Packets</button>
+                    </div>
+                    <div class="box-body" style="height: 250px;">
+                        <canvas id="bandwidthChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="split-view">
+                    <!-- LEFT COLUMN: APP DISTRIBUTION & DPI CONTROLS --> <!-- ANALYSIS + CHARTS -->
                 <div class="middle-layout">
                     <div class="glass-card ai-insight-card">
                         <div class="card-header">
@@ -157,10 +164,23 @@
                 </div>
 
                 <!-- DPI FIREWALL ENGINE -->
-                <div class="dpi-card" id="dpiCard">
-                    <h3><i class="fa-solid fa-shield-halved"></i> C++ DPI Firewall Engine</h3>
-                    <p class="section-desc">Define blocking rules and run the compiled DPI engine to filter traffic from your capture.</p>
-                    <div class="dpi-rule-builder">
+                <div class="dpi-card box-card" id="dpiCard">
+                    <div class="box-header" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer;" onclick="document.getElementById('dpiCollapseArea').classList.toggle('collapsed')">
+                        <h3><i class="fa-solid fa-shield-halved"></i> C++ DPI Firewall Engine</h3>
+                        <i class="fa-solid fa-chevron-down"></i>
+                    </div>
+                    <div id="dpiCollapseArea">
+                        <p class="section-desc">Define blocking rules and run the compiled DPI engine to filter traffic from your capture.</p>
+                        <div class="dpi-presets-row" style="display: flex; gap: 8px; margin-bottom: 12px; align-items: center;">
+                            <span style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 600;">Rule Presets:</span>
+                            <select id="dpiPresetSelect" style="flex: 1; padding: 6px 10px; background: var(--bg-input); border: 1px solid var(--border-card); border-radius: var(--radius-sm); color: var(--text-primary); font-size: 12px; outline: none;">
+                                <option value="">-- Load Saved Preset --</option>
+                                <option value="preset_block_ads">Block Ads & Trackers (Preset)</option>
+                                <option value="preset_block_social">Block Social Media (Preset)</option>
+                            </select>
+                            <button class="btn-secondary btn-small" id="dpiSavePresetBtn" style="padding: 6px 10px; font-size: 11px;" title="Save current rules list as a preset"><i class="fa-solid fa-floppy-disk"></i> Save Preset</button>
+                        </div>
+                        <div class="dpi-rule-builder">
                         <select id="dpiRuleType">
                             <option value="--block-ip">Block IP</option>
                             <option value="--block-app">Block App</option>
@@ -175,9 +195,10 @@
                     <div class="dpi-results" id="dpiResults">
                         <!-- Results rendered dynamically -->
                     </div>
-                    <div class="dpi-actions">
-                        <button class="btn-primary" id="dpiRunBtn"><i class="fa-solid fa-bolt"></i> Run DPI Engine</button>
-                        <button class="btn-secondary" id="dpiDownloadBtn" style="display: none;"><i class="fa-solid fa-download"></i> Download Filtered PCAP</button>
+                        <div class="dpi-controls">
+                            <button id="dpiRunBtn" class="btn-primary"><i class="fa-solid fa-play"></i> Run DPI Filter</button>
+                            <a id="dpiDownloadBtn" class="btn-secondary" style="display:none;" href="/api/dpi/download" download><i class="fa-solid fa-download"></i> Download Filtered PCAP</a>
+                        </div>
                     </div>
                 </div>
 
@@ -371,6 +392,32 @@
                 <div class="hex-viewer" id="hexViewer">
                     <div class="hex-empty-state">No packet selected.</div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- PACKET DRILL DOWN MODAL -->
+    <div class="modal-overlay" id="packetModalOverlay" style="display: none;">
+        <div class="modal-content large-modal">
+            <div class="modal-header">
+                <h3><i class="fa-solid fa-list"></i> Packet Inspector</h3>
+                <button class="btn-close" id="closePacketModal"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body">
+                <table class="packet-table" id="packetTable">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Source</th>
+                            <th>Destination</th>
+                            <th>Protocol</th>
+                            <th>Length</th>
+                            <th>Info</th>
+                        </tr>
+                    </thead>
+                    <tbody id="packetTableBody">
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>
